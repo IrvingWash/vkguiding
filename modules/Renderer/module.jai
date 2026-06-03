@@ -17,11 +17,14 @@ Renderer :: struct {
     device:            VK.Device;
     surface:           VK.Surface_KHR;
     graphics_qf_index: u32;
+    graphics_queue:    VK.Queue;
     swapchain:         VK.Swapchain_KHR;
 
     swapchain_info:        VK.Swapchain_Create_Info_KHR;
     swapchain_images:      [..]VK.Image;
     swapchain_image_views: [..]VK.Image_View;
+
+    frame_data: [FRAME_OVERLAP]Frame_Data;
 
     get_window_framebuffer_size: Get_Window_Framebuffer_Size;
 }
@@ -45,6 +48,12 @@ init :: (
         create_window_surface,
         get_instance_window_extensions,
     );
+    
+    renderer.graphics_queue = VK.get_device_queue(
+        renderer.device,
+        renderer.graphics_qf_index,
+        0,
+    );
 
     renderer.swapchain,
     renderer.swapchain_info,
@@ -57,6 +66,10 @@ init :: (
 }
 
 deinit :: () {
+    for frame_datalet: renderer.frame_data {
+        VK.destroy_command_pool(renderer.device, frame_datalet.command_pool);
+    }
+
     destroy_swapchain();
 
     VK.destroy_device(renderer.device);
@@ -72,6 +85,13 @@ draw :: () {}
 
 #scope_file
 
+Frame_Data :: struct {
+    command_pool:   VK.Command_Pool;
+    command_buffer: VK.Command_Buffer;
+}
+
+FRAME_OVERLAP :: 2;
+
 VALIDATION_LAYERS :: *u8.[
     "VK_LAYER_KHRONOS_validation",
 ];
@@ -79,6 +99,10 @@ VALIDATION_LAYERS :: *u8.[
 DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
+
+get_current_frame_data :: () -> Frame_Data {
+    return renderer.frames[frame_number % FRAME_OVERLAP];
+}
 
 init_vulkan :: (
     create_window_surface: Create_Window_Surface_Proc,
@@ -332,7 +356,34 @@ init_swapchain :: () -> VK.Swapchain_KHR,
 }
 
 init_commands :: () {
-    // @Todo
+    command_pool_info := VK.Command_Pool_Create_Info.{
+        flags              = VK.Command_Pool_Create_Flags.RESET_COMMAND_BUFFER,
+        queue_family_index = renderer.graphics_qf_index,
+    };
+
+    command_buffer_info := VK.Command_Buffer_Allocate_Info.{
+        level                = VK.Command_Buffer_Level.PRIMARY,
+        command_buffer_count = 1,
+    };
+
+    for 0..(FRAME_OVERLAP - 1) {
+        result, command_pool := VK.create_command_pool(
+            renderer.device,
+            *command_pool_info,
+        );
+        assert_result(result, "Failed to create command pool");
+
+        command_buffer_info.command_pool = command_pool;
+
+        result =, command_buffer := VK.allocate_command_buffer(
+            renderer.device,
+            *command_buffer_info,
+        );
+        assert_result(result, "Failed to allocate command boofer");
+
+        renderer.frame_data[it].command_pool   = command_pool;
+        renderer.frame_data[it].command_buffer = command_buffer;
+    }
 }
 
 init_sync_structures :: () {
