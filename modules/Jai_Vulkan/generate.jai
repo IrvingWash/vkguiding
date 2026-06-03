@@ -5,11 +5,20 @@
 #import "File";
 #import "Bindings_Generator";
 #import "String";
+#import "BuildCpp";
 
-VULKAN_INCLUDE_PATH:: #run get_absolute_path("./vulkan-1.4.350.0/include");
+VULKAN_INCLUDE_PATH :: #run get_absolute_path("./vulkan-1.4.350.0/include");
+VMA_PATH            :: #run get_absolute_path("./vulkan-1.4.350.0/include/vma/vk_mem_alloc.h");
 
 #run {
     set_build_options_dc({ do_output = false });
+
+    ok := build_vma();
+    if !ok {
+        print("Failed to build vma", to_standard_error = true);
+
+        compiler_set_workspace_status(.FAILED);
+    }
 
     error := generate();
     if error {
@@ -23,6 +32,28 @@ VULKAN_INCLUDE_PATH:: #run get_absolute_path("./vulkan-1.4.350.0/include");
     }
 }
 
+build_vma :: () -> bool {
+    make_directory_if_it_does_not_exist("./linux");
+
+    return build_cpp_dynamic_lib(
+        "linux/libvma",
+        VMA_PATH,
+        extra = .[
+            "-I",
+            VULKAN_INCLUDE_PATH,
+            "-DVMA_IMPLEMENTATION",
+            "-x",
+            "c++",
+            "-std=c++17",
+            "-lstdc++",
+            "-L./linux",
+            "-lvulkan",
+            "-fno-exceptions",
+            "-fno-rtti",
+        ],
+    );
+}
+
 generate :: () -> error: string {
     options: Generate_Bindings_Options;
     output_filename: string;
@@ -34,6 +65,10 @@ generate :: () -> error: string {
                     {
                         filename   = "./linux/libvulkan.so",
                         identifier = "libvulkan",
+                    },
+                    {
+                        filename   = "./linux/libvma.so",
+                        identifier = "libvma",
                     },
                 );
 
@@ -55,6 +90,7 @@ generate :: () -> error: string {
         array_add(
             *options.source_files,
             tprint("%/%", VULKAN_INCLUDE_PATH, "vulkan/vulkan.h"),
+            tprint("%/%", VULKAN_INCLUDE_PATH, "vma/vk_mem_alloc.h"),
         );
 
 

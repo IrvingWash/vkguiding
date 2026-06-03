@@ -5325,9 +5325,9 @@ Structure_Type :: enum u32 {
 
 #if OS == {
     case .LINUX;
-        libvulkan :: #library "././linux/libvulkan";
+        libvulkan :: #library "./linux/libvulkan";
     case .WINDOWS;
-        libvulkan :: #library "././windows/vulkan-1";
+        libvulkan :: #library "./windows/vulkan-1";
     case;
         assert(false, "Unsupported OS");
 }
