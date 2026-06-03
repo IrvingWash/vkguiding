@@ -67,6 +67,9 @@ init :: (
 
 deinit :: () {
     for frame_datalet: renderer.frame_data {
+        VK.destroy_semaphore(renderer.device, frame_datalet.swapchain_semaphore);
+        VK.destroy_semaphore(renderer.device, frame_datalet.render_semaphore);
+        VK.destroy_fence(renderer.device, frame_datalet.render_fence);
         VK.destroy_command_pool(renderer.device, frame_datalet.command_pool);
     }
 
@@ -88,6 +91,10 @@ draw :: () {}
 Frame_Data :: struct {
     command_pool:   VK.Command_Pool;
     command_buffer: VK.Command_Buffer;
+
+    swapchain_semaphore: VK.Semaphore;
+    render_semaphore:    VK.Semaphore;
+    render_fence:        VK.Fence;
 }
 
 FRAME_OVERLAP :: 2;
@@ -366,7 +373,7 @@ init_commands :: () {
         command_buffer_count = 1,
     };
 
-    for 0..(FRAME_OVERLAP - 1) {
+    for *frame_datalet: renderer.frame_data {
         result, command_pool := VK.create_command_pool(
             renderer.device,
             *command_pool_info,
@@ -381,13 +388,30 @@ init_commands :: () {
         );
         assert_result(result, "Failed to allocate command boofer");
 
-        renderer.frame_data[it].command_pool   = command_pool;
-        renderer.frame_data[it].command_buffer = command_buffer;
+        frame_datalet.command_pool   = command_pool;
+        frame_datalet.command_buffer = command_buffer;
     }
 }
 
 init_sync_structures :: () {
-    // @Todo
+    semaphore_info: VK.Semaphore_Create_Info;
+    fence_info := VK.Fence_Create_Info.{
+        flags = VK.Fence_Create_Flags.SIGNALED,
+    };
+
+    for *frame_datalet: renderer.frame_data {
+        result, render_fence := VK.create_fence(renderer.device, *fence_info);
+        assert_result(result, "Failed to create fence");
+
+        result =, swapchain_semaphore := VK.create_semaphore(renderer.device, *semaphore_info);
+        assert_result(result, "Failed to create semaphore");
+        result =, render_semaphore := VK.create_semaphore(renderer.device, *semaphore_info);
+        assert_result(result, "Failed to create semaphore");
+
+        frame_datalet.render_fence        = render_fence;
+        frame_datalet.render_semaphore    = render_semaphore;
+        frame_datalet.swapchain_semaphore = swapchain_semaphore;
+    }
 }
 
 destroy_swapchain :: () {
