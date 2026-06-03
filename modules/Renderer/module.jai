@@ -66,6 +66,8 @@ init :: (
 }
 
 deinit :: () {
+    VK.device_wait_idle(renderer.device);
+
     for frame_datalet: renderer.frame_data {
         VK.destroy_semaphore(renderer.device, frame_datalet.swapchain_semaphore);
         VK.destroy_semaphore(renderer.device, frame_datalet.render_semaphore);
@@ -82,7 +84,144 @@ deinit :: () {
     VK.destroy_instance(renderer.instance);
 }
 
-draw :: () {}
+draw :: () {
+    renderer.frame_number += 1;
+
+    // Wait for fences and reset stuff
+    {
+        result := VK.wait_for_fence(
+            renderer.device,
+            get_current_frame_data().render_fence,
+            SECOND_IN_NANO,
+        );
+        assert_result(result, "Failed to wait for render fence");
+        result = VK.reset_fence(
+            renderer.device,
+            get_current_frame_data().render_fence,
+        );
+        assert_result(result, "Failed to reset render fence");
+    }
+    VK.reset_command_buffer(get_current_frame_data().command_buffer, 0);
+
+    // Get next swapchain image index
+    swapchain_image_index: u32 = ---;
+    {
+        result:, swapchain_image_index = VK.acquire_next_image_khr(
+            renderer.device,
+            renderer.swapchain,
+            SECOND_IN_NANO,
+            get_current_frame_data().swapchain_semaphore,
+            null,
+        );
+    }
+
+    // Begin command buffer
+    {
+        begin_info := VK.Command_Buffer_Begin_Info.{
+            flags = VK.Command_Buffer_Usage_Flags.ONE_TIME_SUBMIT,
+        };
+
+        result := VK.begin_command_buffer(
+            get_current_frame_data().command_buffer,
+            *begin_info,
+        );
+        assert_result(result, "Failed to begin command buffer");
+    }
+
+    // Transition swapchain image to be suitable for drawing
+    transition_image(
+        get_current_frame_data().command_buffer,
+        renderer.swapchain_images[swapchain_image_index],
+        VK.Image_Layout.UNDEFINED,
+        VK.Image_Layout.GENERAL,
+        VK.Image_Aspect_Flags.COLOR,
+    );
+
+    // Clear image
+    {
+        clear_color_value: VK.Clear_Color_Value;
+        clear_color_value._float32 = float.[1, 0, 0, 1];
+
+        clear_range := VK.Image_Subresource_Range.{
+            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+            base_mip_level   = 0,
+            level_count      = 1,
+            base_array_layer = 0,
+            layer_count      = 1,
+        };
+
+        VK.cmd_clear_color_image(
+            get_current_frame_data().command_buffer,
+            renderer.swapchain_images[swapchain_image_index],
+            VK.Image_Layout.GENERAL,
+            *clear_color_value,
+            .[clear_range],
+        );
+    }
+
+    // Transition swapchain image back to be suitable for presenting
+    transition_image(
+        get_current_frame_data().command_buffer,
+        renderer.swapchain_images[swapchain_image_index],
+        VK.Image_Layout.GENERAL,
+        VK.Image_Layout.PRESENT_SRC_KHR,
+        VK.Image_Aspect_Flags.COLOR,
+    );
+
+    // End command buffer (it's unrecordable after this)
+    {
+        result := VK.end_command_buffer(get_current_frame_data().command_buffer);
+        assert_result(result, "Failed to end command buffer");
+    }
+
+    // Submitting
+    {
+        command_buffer_submit_info := VK.Command_Buffer_Submit_Info.{
+            command_buffer = get_current_frame_data().command_buffer,
+        };
+
+        wait_submit_info := VK.Semaphore_Submit_Info.{
+            semaphore  = get_current_frame_data().swapchain_semaphore,
+            value      = 1,
+            stage_mask = VK.Pipeline_Stage_Flags_2.COLOR_ATTACHMENT_OUTPUT_KHR,
+        };
+        signal_submit_info := VK.Semaphore_Submit_Info.{
+            semaphore  = get_current_frame_data().render_semaphore,
+            value      = 1,
+            stage_mask = VK.Pipeline_Stage_Flags_2.ALL_GRAPHICS,
+        };
+
+        submit_info := VK.Submit_Info_2.{
+            wait_semaphore_info_count   = 1,
+            p_wait_semaphore_infos      = *wait_submit_info,
+            command_buffer_info_count   = 1,
+            p_command_buffer_infos      = *command_buffer_submit_info,
+            signal_semaphore_info_count = 1,
+            p_signal_semaphore_infos    = *signal_submit_info,
+        };
+
+        result := VK.queue_submit_2(
+            renderer.graphics_queue,
+            .[submit_info],
+            get_current_frame_data().render_fence,
+        );
+        assert_result(result, "Failed to submit queue");
+    }
+
+    // Presenting
+    {
+        present_info := VK.Present_Info_KHR.{
+            wait_semaphore_count = 1,
+            p_wait_semaphores    = *get_current_frame_data().render_semaphore,
+            swapchain_count      = 1,
+            p_swapchains         = *renderer.swapchain,
+            p_image_indices      = *swapchain_image_index,
+        };
+
+        result := VK.queue_present_khr(renderer.graphics_queue, *present_info);
+        assert_result(result, "Failed to present queue");
+    }
+}
 
 
 
@@ -92,12 +231,18 @@ Frame_Data :: struct {
     command_pool:   VK.Command_Pool;
     command_buffer: VK.Command_Buffer;
 
+    // To be signaled by swapchain - to be waited by render queue
     swapchain_semaphore: VK.Semaphore;
+
+    // To be signaled by render queue - to be waited by swapchain
     render_semaphore:    VK.Semaphore;
+
     render_fence:        VK.Fence;
 }
 
-FRAME_OVERLAP :: 2;
+SECOND_IN_NANO :: 1000000000;
+
+FRAME_OVERLAP :: 3;
 
 VALIDATION_LAYERS :: *u8.[
     "VK_LAYER_KHRONOS_validation",
@@ -107,8 +252,43 @@ DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
 
+transition_image :: (
+    cmd:            VK.Command_Buffer,
+    image:          VK.Image,
+    current_layout: VK.Image_Layout,
+    new_layout:     VK.Image_Layout,
+    aspect_mask:    VK.Image_Aspect_Flags,
+) {
+    barriers := VK.Image_Memory_Barrier_2.[
+        {
+            src_stage_mask    = VK.Pipeline_Stage_Flags_2.ALL_COMMANDS,
+            src_access_mask   = VK.Access_Flags_2.MEMORY_WRITE,
+            dst_stage_mask    = VK.Pipeline_Stage_Flags_2.ALL_COMMANDS,
+            dst_access_mask   = VK.Access_Flags_2.MEMORY_WRITE
+                | .MEMORY_READ,
+            old_layout        = current_layout,
+            new_layout        = new_layout,
+            image             = image,
+            subresource_range = VK.Image_Subresource_Range.{
+                aspect_mask      = aspect_mask,
+                base_mip_level   = 0,
+                level_count      = 1,
+                base_array_layer = 0,
+                layer_count      = 1,
+            },
+        }
+    ];
+
+    dependency_info := VK.Dependency_Info.{
+        image_memory_barrier_count = xx barriers.count,
+        p_image_memory_barriers    = barriers.data,
+    };
+
+    VK.cmd_pipeline_barrier_2(cmd, *dependency_info);
+}
+
 get_current_frame_data :: () -> Frame_Data {
-    return renderer.frames[frame_number % FRAME_OVERLAP];
+    return renderer.frame_data[renderer.frame_number % FRAME_OVERLAP];
 }
 
 init_vulkan :: (
@@ -419,6 +599,8 @@ destroy_swapchain :: () {
         VK.destroy_image_view(renderer.device, image_view);
     }
     array_free(renderer.swapchain_image_views);
+
+    array_free(renderer.swapchain_images);
 
     VK.destroy_swapchain_khr(renderer.device, renderer.swapchain);
 }

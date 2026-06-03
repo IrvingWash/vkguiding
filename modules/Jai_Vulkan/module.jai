@@ -84,6 +84,35 @@ PFN_Free_Function :: #type (
 // Structs
 // =========================================================================
 
+Submit_Info_2 :: struct {
+    s_type :=                    Structure_Type.SUBMIT_INFO_2;
+    p_next:                      *void;
+    flags:                       Submit_Flags;
+    wait_semaphore_info_count:   u32;
+    p_wait_semaphore_infos:      *Semaphore_Submit_Info;
+    command_buffer_info_count:   u32;
+    p_command_buffer_infos:      *Command_Buffer_Submit_Info;
+    signal_semaphore_info_count: u32;
+    p_signal_semaphore_infos:    *Semaphore_Submit_Info;
+}
+
+
+Semaphore_Submit_Info :: struct {
+    s_type :=     Structure_Type.SEMAPHORE_SUBMIT_INFO;
+    p_next:       *void;
+    semaphore:    Semaphore;
+    value:        u64;
+    stage_mask:   Pipeline_Stage_Flags_2;
+    device_index: u32;
+}
+
+Command_Buffer_Submit_Info :: struct {
+    s_type :=       Structure_Type.COMMAND_BUFFER_SUBMIT_INFO;
+    p_next:         *void;
+    command_buffer: Command_Buffer;
+    device_mask:    u32;
+}
+
 Physical_Device_Vulkan_1_2_Features :: struct {
     s_type :=                                                  Structure_Type.PHYSICAL_DEVICE_VULKAN_1_2_FEATURES;
     p_next:                                                    *void;
@@ -432,7 +461,7 @@ Dependency_Info :: struct {
 }
 
 Image_Memory_Barrier_2 :: struct {
-    s_type                  := Structure_Type.IMAGE_MEMORY_BARRIER_2;
+    s_type :=               Structure_Type.IMAGE_MEMORY_BARRIER_2;
     p_next:                 *void;
     src_stage_mask:         Pipeline_Stage_Flags_2;
     src_access_mask:        Access_Flags_2;
@@ -1111,6 +1140,24 @@ Swapchain_Create_Info_KHR :: struct {
 // Procedures
 // =========================================================================
 
+queue_submit_2 :: inline (
+    queue:   Queue,
+    submits: []Submit_Info_2,
+    fence:   Fence,
+) -> Result {
+    return vkQueueSubmit2(
+        queue,
+        cast(u32, submits.count),
+        submits.data,
+        fence,
+    );
+}
+
+reset_command_buffer :: (
+    command_buffer: Command_Buffer,
+    flags: Command_Buffer_Reset_Flags,
+) -> Result #foreign libvulkan "vkResetCommandBuffer";
+
 queue_wait_idle :: (queue: Queue) -> Result #foreign libvulkan "vkQueueWaitIdle";
 
 destroy_descriptor_set_layout :: (
@@ -1214,6 +1261,23 @@ create_sampler :: inline (
     );
 
     return result, sampler;
+}
+
+cmd_clear_color_image :: inline (
+    command_buffer: Command_Buffer,
+    image:          Image,
+    image_layout:   Image_Layout,
+    p_color:        *Clear_Color_Value,
+    ranges:         []Image_Subresource_Range,
+) {
+    vkCmdClearColorImage(
+        command_buffer,
+        image,
+        image_layout,
+        p_color,
+        cast(u32, ranges.count),
+        ranges.data,
+    );
 }
 
 get_physical_device_format_properties :: inline (
@@ -1959,9 +2023,16 @@ allocate_command_buffer :: inline (
     return result, command_buffer;
 }
 
-cmd_bind_pipeline :: (command_buffer: Command_Buffer, pipeline_bind_point: Pipeline_Bind_Point, pipeline: Pipeline) -> void #foreign libvulkan "vkCmdBindPipeline";
+cmd_bind_pipeline :: (
+    command_buffer: Command_Buffer,
+    pipeline_bind_point: Pipeline_Bind_Point,
+    pipeline: Pipeline,
+) -> void #foreign libvulkan "vkCmdBindPipeline";
 
-cmd_pipeline_barrier_2 :: (command_buffer: Command_Buffer, p_dependency_info: *Dependency_Info) -> void #foreign libvulkan "vkCmdPipelineBarrier2";
+cmd_pipeline_barrier_2 :: (
+    command_buffer: Command_Buffer,
+    p_dependency_info: *Dependency_Info,
+) -> void #foreign libvulkan "vkCmdPipelineBarrier2";
 
 create_semaphore :: inline (
     device:        Device,
@@ -2097,6 +2168,17 @@ queue_present_khr :: (
 // =========================================================================
 // Enums
 // =========================================================================
+
+Submit_Flags :: enum_flags u32 {
+    PROTECTED          :: 1;
+    PROTECTED_KHR      :: 1;
+    FLAG_BITS_MAX_ENUM :: 2147483647;
+}
+
+Command_Buffer_Reset_Flags :: enum_flags u32 {
+    RELEASE_RESOURCES  :: 1;
+    FLAG_BITS_MAX_ENUM :: 2147483647;
+}
 
 Format_Feature_Flags :: enum_flags u32 {
     SAMPLED_IMAGE                                                               :: 1;
@@ -5250,53 +5332,353 @@ Structure_Type :: enum u32 {
         assert(false, "Unsupported OS");
 }
 
-vkCreateInstance :: (pCreateInfo: *Instance_Create_Info, pAllocator: *Allocation_Callbacks, pInstance: *Instance) -> Result #foreign libvulkan;
-vkEnumerateInstanceExtensionProperties :: (pLayerName: *u8, pPropertyCount: *u32, pProperties: *Extension_Properties) -> Result #foreign libvulkan;
-vkEnumerateInstanceLayerProperties :: (pPropertyCount: *u32, pProperties: *Layer_Properties) -> Result #foreign libvulkan;
-vkEnumeratePhysicalDevices :: (instance: Instance, pPhysicalDeviceCount: *u32, pPhysicalDevices: *Physical_Device) -> Result #foreign libvulkan;
-vkGetPhysicalDeviceProperties :: (physicalDevice: Physical_Device, pProperties: *Physical_Device_Properties) -> void #foreign libvulkan;
-vkGetPhysicalDeviceFeatures :: (physicalDevice: Physical_Device, pFeatures: *Physical_Device_Features) -> void #foreign libvulkan;
-vkGetPhysicalDeviceQueueFamilyProperties :: (physicalDevice: Physical_Device, pQueueFamilyPropertyCount: *u32, pQueueFamilyProperties: *Queue_Family_Properties) -> void #foreign libvulkan;
-vkEnumerateDeviceExtensionProperties :: (physicalDevice: Physical_Device, pLayerName: *u8, pPropertyCount: *u32, pProperties: *Extension_Properties) -> Result #foreign libvulkan;
-vkCreateDevice :: (physicalDevice: Physical_Device, pCreateInfo: *Device_Create_Info, pAllocator: *Allocation_Callbacks, pDevice: *Device) -> Result #foreign libvulkan;
-vkGetDeviceQueue :: (device: Device, queueFamilyIndex: u32, queueIndex: u32, pQueue: *Queue) -> void #foreign libvulkan;
-vkGetPhysicalDeviceSurfaceSupportKHR :: (physicalDevice: Physical_Device, queueFamilyIndex: u32, surface: Surface_KHR, pSupported: *Bool) -> Result #foreign libvulkan;
-vkGetPhysicalDeviceSurfaceCapabilitiesKHR :: (physicalDevice: Physical_Device, surface: Surface_KHR, pSurfaceCapabilities: *Surface_Capabilities_KHR) -> Result #foreign libvulkan;
-vkGetPhysicalDeviceSurfaceFormatsKHR :: (physicalDevice: Physical_Device, surface: Surface_KHR, pSurfaceFormatCount: *u32, pSurfaceFormats: *Surface_Format_KHR) -> Result #foreign libvulkan;
-vkGetPhysicalDeviceSurfacePresentModesKHR :: (physicalDevice: Physical_Device, surface: Surface_KHR, pPresentModeCount: *u32, pPresentModes: *Present_Mode_KHR) -> Result #foreign libvulkan;
-vkCreateSwapchainKHR :: (device: Device, pCreateInfo: *Swapchain_Create_Info_KHR, pAllocator: *Allocation_Callbacks, pSwapchain: *Swapchain_KHR) -> Result #foreign libvulkan;
-vkGetSwapchainImagesKHR :: (device: Device, swapchain: Swapchain_KHR, pSwapchainImageCount: *u32, pSwapchainImages: *Image) -> Result #foreign libvulkan;
-vkCreateImageView :: (device: Device, pCreateInfo: *Image_View_Create_Info, pAllocator: *Allocation_Callbacks, pView: *Image_View) -> Result #foreign libvulkan;
-vkCreateShaderModule :: (device: Device, pCreateInfo: *Shader_Module_Create_Info, pAllocator: *Allocation_Callbacks, pShaderModule: *Shader_Module) -> Result #foreign libvulkan;
-vkCreatePipelineLayout :: (device: Device, pCreateInfo: *Pipeline_Layout_Create_Info, pAllocator: *Allocation_Callbacks, pPipelineLayout: *Pipeline_Layout) -> Result #foreign libvulkan;
-vkCreateGraphicsPipelines :: (device: Device, pipelineCache: Pipeline_Cache, createInfoCount: u32, pCreateInfos: *Graphics_Pipeline_Create_Info, pAllocator: *Allocation_Callbacks, pPipelines: *Pipeline) -> Result #foreign libvulkan;
-vkCreateCommandPool :: (device: Device, pCreateInfo: *Command_Pool_Create_Info, pAllocator: *Allocation_Callbacks, pCommandPool: *Command_Pool) -> Result #foreign libvulkan;
-vkAllocateCommandBuffers :: (device: Device, pAllocateInfo: *Command_Buffer_Allocate_Info, pCommandBuffers: *Command_Buffer) -> Result #foreign libvulkan;
-vkCmdSetViewport :: (commandBuffer: Command_Buffer, firstViewport: u32, viewportCount: u32, pViewports: *Viewport) -> void #foreign libvulkan;
-vkCmdSetScissor :: (commandBuffer: Command_Buffer, firstScissor: u32, scissorCount: u32, pScissors: *Rect_2D) -> void #foreign libvulkan;
-vkCreateSemaphore :: (device: Device, pCreateInfo: *Semaphore_Create_Info, pAllocator: *Allocation_Callbacks, pSemaphore: *Semaphore) -> Result #foreign libvulkan;
-vkCreateFence :: (device: Device, pCreateInfo: *Fence_Create_Info, pAllocator: *Allocation_Callbacks, pFence: *Fence) -> Result #foreign libvulkan;
-vkWaitForFences :: (device: Device, fenceCount: u32, pFences: *Fence, waitAll: Bool, timeout: u64) -> Result #foreign libvulkan;
-vkResetFences :: (device: Device, fenceCount: u32, pFences: *Fence) -> Result #foreign libvulkan;
-vkAcquireNextImageKHR :: (device: Device, swapchain: Swapchain_KHR, timeout: u64, semaphore: Semaphore, fence: Fence, pImageIndex: *u32) -> Result #foreign libvulkan;
-vkQueueSubmit :: (queue: Queue, submitCount: u32, pSubmits: *Submit_Info, fence: Fence) -> Result #foreign libvulkan;
-vkCreateBuffer :: (device: Device, pCreateInfo: *Buffer_Create_Info, pAllocator: *Allocation_Callbacks, pBuffer: *Buffer) -> Result #foreign libvulkan;
-vkGetBufferMemoryRequirements :: (device: Device, buffer: Buffer, pMemoryRequirements: *Memory_Requirements) -> void #foreign libvulkan;
-vkGetPhysicalDeviceMemoryProperties :: (physicalDevice: Physical_Device, pMemoryProperties: *Physical_Device_Memory_Properties) -> void #foreign libvulkan;
-vkAllocateMemory :: (device: Device, pAllocateInfo: *Memory_Allocate_Info, pAllocator: *Allocation_Callbacks, pMemory: *Device_Memory) -> Result #foreign libvulkan;
-vkMapMemory :: (device: Device, memory: Device_Memory, offset: Device_Size, size: Device_Size, flags: Memory_Map_Flags, ppData: **void) -> Result #foreign libvulkan;
-vkCmdBindVertexBuffers :: (commandBuffer: Command_Buffer, firstBinding: u32, bindingCount: u32, pBuffers: *Buffer, pOffsets: *Device_Size) -> void #foreign libvulkan;
-vkCmdCopyBuffer :: (commandBuffer: Command_Buffer, srcBuffer: Buffer, dstBuffer: Buffer, regionCount: u32, pRegions: *Buffer_Copy) -> void #foreign libvulkan;
-vkCreateDescriptorSetLayout :: (device: Device, pCreateInfo: *Descriptor_Set_Layout_Create_Info, pAllocator: *Allocation_Callbacks, pSetLayout: *Descriptor_Set_Layout) -> Result #foreign libvulkan;
-vkCreateDescriptorPool :: (device: Device, pCreateInfo: *Descriptor_Pool_Create_Info, pAllocator: *Allocation_Callbacks, pDescriptorPool: *Descriptor_Pool) -> Result #foreign libvulkan;
-vkAllocateDescriptorSets :: (device: Device, pAllocateInfo: *Descriptor_Set_Allocate_Info, pDescriptorSets: *Descriptor_Set) -> Result #foreign libvulkan;
-vkUpdateDescriptorSets :: (device: Device, descriptorWriteCount: u32, pDescriptorWrites: *Write_Descriptor_Set, descriptorCopyCount: u32, pDescriptorCopies: *Copy_Descriptor_Set) -> void #foreign libvulkan;
-vkCmdBindDescriptorSets :: (commandBuffer: Command_Buffer, pipelineBindPoint: Pipeline_Bind_Point, layout: Pipeline_Layout, firstSet: u32, descriptorSetCount: u32, pDescriptorSets: *Descriptor_Set, dynamicOffsetCount: u32, pDynamicOffsets: *u32) -> void #foreign libvulkan;
-vkCreateImage :: (device: Device, pCreateInfo: *Image_Create_Info, pAllocator: *Allocation_Callbacks, pImage: *Image) -> Result #foreign libvulkan;
-vkGetImageMemoryRequirements :: (device: Device, image: Image, pMemoryRequirements: *Memory_Requirements) -> void #foreign libvulkan;
-vkBindImageMemory :: (device: Device, image: Image, memory: Device_Memory, memoryOffset: Device_Size) -> Result #foreign libvulkan;
-vkCmdCopyBufferToImage :: (commandBuffer: Command_Buffer, srcBuffer: Buffer, dstImage: Image, dstImageLayout: Image_Layout, regionCount: u32, pRegions: *Buffer_Image_Copy) -> void #foreign libvulkan;
-vkCreateSampler :: (device: Device, pCreateInfo: *Sampler_Create_Info, pAllocator: *Allocation_Callbacks, pSampler: *Sampler) -> Result #foreign libvulkan;
-vkGetPhysicalDeviceFormatProperties :: (physicalDevice: Physical_Device, format: Format, pFormatProperties: *Format_Properties) -> void #foreign libvulkan;
+vkCreateInstance :: (
+    pCreateInfo: *Instance_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pInstance: *Instance,
+) -> Result #foreign libvulkan;
+
+vkEnumerateInstanceExtensionProperties :: (
+    pLayerName: *u8,
+    pPropertyCount: *u32,
+    pProperties: *Extension_Properties,
+) -> Result #foreign libvulkan;
+
+vkEnumerateInstanceLayerProperties :: (
+    pPropertyCount: *u32,
+    pProperties: *Layer_Properties,
+) -> Result #foreign libvulkan;
+
+vkEnumeratePhysicalDevices :: (
+    instance: Instance,
+    pPhysicalDeviceCount: *u32,
+    pPhysicalDevices: *Physical_Device,
+) -> Result #foreign libvulkan;
+
+vkGetPhysicalDeviceProperties :: (
+    physicalDevice: Physical_Device,
+    pProperties: *Physical_Device_Properties,
+) -> void #foreign libvulkan;
+
+vkGetPhysicalDeviceFeatures :: (
+    physicalDevice: Physical_Device,
+    pFeatures: *Physical_Device_Features,
+) -> void #foreign libvulkan;
+
+vkGetPhysicalDeviceQueueFamilyProperties :: (
+    physicalDevice: Physical_Device,
+    pQueueFamilyPropertyCount: *u32,
+    pQueueFamilyProperties: *Queue_Family_Properties,
+) -> void #foreign libvulkan;
+
+vkEnumerateDeviceExtensionProperties :: (
+    physicalDevice: Physical_Device,
+    pLayerName: *u8,
+    pPropertyCount: *u32,
+    pProperties: *Extension_Properties,
+) -> Result #foreign libvulkan;
+
+vkCreateDevice :: (
+    physicalDevice: Physical_Device,
+    pCreateInfo: *Device_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pDevice: *Device,
+) -> Result #foreign libvulkan;
+
+vkGetDeviceQueue :: (
+    device: Device,
+    queueFamilyIndex: u32,
+    queueIndex: u32,
+    pQueue: *Queue,
+) -> void #foreign libvulkan;
+
+vkGetPhysicalDeviceSurfaceSupportKHR :: (
+    physicalDevice: Physical_Device,
+    queueFamilyIndex: u32,
+    surface: Surface_KHR,
+    pSupported: *Bool,
+) -> Result #foreign libvulkan;
+
+vkGetPhysicalDeviceSurfaceCapabilitiesKHR :: (
+    physicalDevice: Physical_Device,
+    surface: Surface_KHR,
+    pSurfaceCapabilities: *Surface_Capabilities_KHR,
+) -> Result #foreign libvulkan;
+
+vkGetPhysicalDeviceSurfaceFormatsKHR :: (
+    physicalDevice: Physical_Device,
+    surface: Surface_KHR,
+    pSurfaceFormatCount: *u32,
+    pSurfaceFormats: *Surface_Format_KHR,
+) -> Result #foreign libvulkan;
+
+vkGetPhysicalDeviceSurfacePresentModesKHR :: (
+    physicalDevice: Physical_Device,
+    surface: Surface_KHR,
+    pPresentModeCount: *u32,
+    pPresentModes: *Present_Mode_KHR,
+) -> Result #foreign libvulkan;
+
+vkCreateSwapchainKHR :: (
+    device: Device,
+    pCreateInfo: *Swapchain_Create_Info_KHR,
+    pAllocator: *Allocation_Callbacks,
+    pSwapchain: *Swapchain_KHR,
+) -> Result #foreign libvulkan;
+
+vkGetSwapchainImagesKHR :: (
+    device: Device,
+    swapchain: Swapchain_KHR,
+    pSwapchainImageCount: *u32,
+    pSwapchainImages: *Image,
+) -> Result #foreign libvulkan;
+
+vkCreateImageView :: (
+    device: Device,
+    pCreateInfo: *Image_View_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pView: *Image_View,
+) -> Result #foreign libvulkan;
+
+vkCreateShaderModule :: (
+    device: Device,
+    pCreateInfo: *Shader_Module_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pShaderModule: *Shader_Module,
+) -> Result #foreign libvulkan;
+
+vkCreatePipelineLayout :: (
+    device: Device,
+    pCreateInfo: *Pipeline_Layout_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pPipelineLayout: *Pipeline_Layout,
+) -> Result #foreign libvulkan;
+
+vkCreateGraphicsPipelines :: (
+    device: Device,
+    pipelineCache: Pipeline_Cache,
+    createInfoCount: u32,
+    pCreateInfos: *Graphics_Pipeline_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pPipelines: *Pipeline,
+) -> Result #foreign libvulkan;
+
+vkCreateCommandPool :: (
+    device: Device,
+    pCreateInfo: *Command_Pool_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pCommandPool: *Command_Pool,
+) -> Result #foreign libvulkan;
+
+vkAllocateCommandBuffers :: (
+    device: Device,
+    pAllocateInfo: *Command_Buffer_Allocate_Info,
+    pCommandBuffers: *Command_Buffer,
+) -> Result #foreign libvulkan;
+
+vkCmdSetViewport :: (
+    commandBuffer: Command_Buffer,
+    firstViewport: u32,
+    viewportCount: u32,
+    pViewports: *Viewport,
+) -> void #foreign libvulkan;
+
+vkCmdSetScissor :: (
+    commandBuffer: Command_Buffer,
+    firstScissor: u32,
+    scissorCount: u32,
+    pScissors: *Rect_2D,
+) -> void #foreign libvulkan;
+
+vkCreateSemaphore :: (
+    device: Device,
+    pCreateInfo: *Semaphore_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pSemaphore: *Semaphore
+) -> Result #foreign libvulkan;
+
+vkCreateFence :: (
+    device: Device,
+    pCreateInfo: *Fence_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pFence: *Fence,
+) -> Result #foreign libvulkan;
+
+vkWaitForFences :: (
+    device: Device,
+    fenceCount: u32,
+    pFences: *Fence,
+    waitAll: Bool,
+    timeout: u64,
+) -> Result #foreign libvulkan;
+
+vkResetFences :: (
+    device: Device,
+    fenceCount: u32,
+    pFences: *Fence,
+) -> Result #foreign libvulkan;
+
+vkAcquireNextImageKHR :: (
+    device: Device,
+    swapchain: Swapchain_KHR,
+    timeout: u64,
+    semaphore: Semaphore,
+    fence: Fence,
+    pImageIndex: *u32,
+) -> Result #foreign libvulkan;
+
+vkQueueSubmit :: (
+    queue: Queue,
+    submitCount: u32,
+    pSubmits: *Submit_Info,
+    fence: Fence,
+) -> Result #foreign libvulkan;
+
+vkCreateBuffer :: (
+    device: Device,
+    pCreateInfo: *Buffer_Create_Info,
+    pAllocator: *Allocation_Callbacks,
+    pBuffer: *Buffer,
+) -> Result #foreign libvulkan;
+
+vkGetBufferMemoryRequirements :: (
+    device: Device,
+    buffer: Buffer,
+    pMemoryRequirements: *Memory_Requirements,
+) -> void #foreign libvulkan;
+
+vkGetPhysicalDeviceMemoryProperties :: (
+    physicalDevice: Physical_Device,
+    pMemoryProperties: *Physical_Device_Memory_Properties,
+) -> void #foreign libvulkan;
+
+vkAllocateMemory :: (
+    device: Device,
+    pAllocateInfo: *Memory_Allocate_Info,
+    pAllocator: *Allocation_Callbacks,
+    pMemory: *Device_Memory,
+) -> Result #foreign libvulkan;
+
+vkMapMemory :: (
+    device: Device,
+    memory: Device_Memory,
+    offset: Device_Size,
+    size: Device_Size,
+    flags: Memory_Map_Flags,
+    ppData: **void,
+) -> Result #foreign libvulkan;
+
+vkCmdBindVertexBuffers :: (
+    commandBuffer: Command_Buffer,
+    firstBinding:  u32,
+    bindingCount:  u32,
+    pBuffers:      *Buffer,
+    pOffsets:      *Device_Size,
+) -> void #foreign libvulkan;
+
+vkCmdCopyBuffer :: (
+    commandBuffer: Command_Buffer,
+    srcBuffer:     Buffer,
+    dstBuffer:     Buffer,
+    regionCount:   u32,
+    pRegions:      *Buffer_Copy,
+) -> void #foreign libvulkan;
+
+vkCreateDescriptorSetLayout :: (
+    device:      Device,
+    pCreateInfo: *Descriptor_Set_Layout_Create_Info,
+    pAllocator:  *Allocation_Callbacks,
+    pSetLayout:  *Descriptor_Set_Layout,
+) -> Result #foreign libvulkan;
+
+vkCreateDescriptorPool :: (
+    device:          Device,
+    pCreateInfo:     *Descriptor_Pool_Create_Info,
+    pAllocator:      *Allocation_Callbacks,
+    pDescriptorPool: *Descriptor_Pool,
+) -> Result #foreign libvulkan;
+
+vkAllocateDescriptorSets :: (
+    device:          Device,
+    pAllocateInfo:   *Descriptor_Set_Allocate_Info,
+    pDescriptorSets: *Descriptor_Set,
+) -> Result #foreign libvulkan;
+
+vkUpdateDescriptorSets :: (
+    device:               Device,
+    descriptorWriteCount: u32,
+    pDescriptorWrites:    *Write_Descriptor_Set,
+    descriptorCopyCount:  u32,
+    pDescriptorCopies:    *Copy_Descriptor_Set,
+) -> void #foreign libvulkan;
+
+vkCmdBindDescriptorSets :: (
+    commandBuffer:      Command_Buffer,
+    pipelineBindPoint:  Pipeline_Bind_Point,
+    layout:             Pipeline_Layout,
+    firstSet:           u32,
+    descriptorSetCount: u32,
+    pDescriptorSets:    *Descriptor_Set,
+    dynamicOffsetCount: u32,
+    pDynamicOffsets:    *u32,
+) -> void #foreign libvulkan;
+
+vkCreateImage :: (
+    device:      Device,
+    pCreateInfo: *Image_Create_Info,
+    pAllocator:  *Allocation_Callbacks,
+    pImage:      *Image,
+) -> Result #foreign libvulkan;
+
+vkGetImageMemoryRequirements :: (
+    device:              Device,
+    image:               Image,
+    pMemoryRequirements: *Memory_Requirements,
+) -> void #foreign libvulkan;
+
+vkBindImageMemory :: (
+    device:       Device,
+    image:        Image,
+    memory:       Device_Memory,
+    memoryOffset: Device_Size,
+) -> Result #foreign libvulkan;
+
+vkCmdCopyBufferToImage :: (
+    commandBuffer:  Command_Buffer,
+    srcBuffer:      Buffer,
+    dstImage:       Image,
+    dstImageLayout: Image_Layout,
+    regionCount:    u32,
+    pRegions:       *Buffer_Image_Copy,
+) -> void #foreign libvulkan;
+
+vkCreateSampler :: (
+    device:      Device,
+    pCreateInfo: *Sampler_Create_Info,
+    pAllocator:  *Allocation_Callbacks,
+    pSampler:    *Sampler,
+) -> Result #foreign libvulkan;
+
+vkGetPhysicalDeviceFormatProperties :: (
+    physicalDevice:    Physical_Device,
+    format:            Format,
+    pFormatProperties: *Format_Properties,
+) -> void #foreign libvulkan;
+
+vkCmdClearColorImage :: (
+    command_buffer: Command_Buffer,
+    image:          Image,
+    image_layout:   Image_Layout,
+    p_color:        *Clear_Color_Value,
+    range_count:    u32,
+    p_ranges:       *Image_Subresource_Range,
+) -> void #foreign libvulkan;
+
+vkQueueSubmit2 :: (
+    queue:        Queue,
+    submit_count: u32,
+    p_submits:    *Submit_Info_2,
+    fence:        Fence
+) -> Result #foreign libvulkan;
 
 #import "Basic";
