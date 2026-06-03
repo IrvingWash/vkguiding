@@ -19,6 +19,7 @@ Renderer :: struct {
     graphics_qf_index: u32;
     graphics_queue:    VK.Queue;
     swapchain:         VK.Swapchain_KHR;
+    allocator:         VMA.Allocator;
 
     swapchain_info:        VK.Swapchain_Create_Info_KHR;
     swapchain_images:      [..]VK.Image;
@@ -63,10 +64,25 @@ init :: (
     init_commands();
 
     init_sync_structures();
+
+    // VMA
+    {
+        allocator_info := VMA.Allocator_Create_Info.{
+             flags           = VMA.Allocator_Create_Flags.BUFFER_DEVICE_ADDRESS,
+             physical_device = renderer.physical_device,
+             device          = renderer.device,
+             instance        = renderer.instance,
+        };
+
+        result:, renderer.allocator = VMA.create_allocator(*allocator_info);
+        assert_result(result, "Failed to create allocator");
+    }
 }
 
 deinit :: () {
     VK.device_wait_idle(renderer.device);
+
+    VMA.destroy_allocator(renderer.allocator);
 
     for frame_datalet: renderer.frame_data {
         VK.destroy_semaphore(renderer.device, frame_datalet.swapchain_semaphore);
@@ -610,4 +626,5 @@ assert_result :: (result: VK.Result, message: string) {
 }
 
 #import "Basic";
-VK :: #import "Jai_Vulkan";
+VK  :: #import "Jai_Vulkan";
+VMA :: #import "Jai_Vulkan/VMA";
