@@ -1,1 +1,1 @@
-(Setting up vulkan commands)[https://vkguide.dev/docs/new_chapter_1/vulkan_commands_code//]
+(Improving the render loop)[https://vkguide.dev/docs/new_chapter_2/vulkan_new_rendering/]
