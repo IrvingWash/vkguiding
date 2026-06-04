@@ -84,6 +84,27 @@ PFN_Free_Function :: #type (
 // Structs
 // =========================================================================
 
+Blit_Image_Info_2 :: struct {
+    s_type :=         Structure_Type.BLIT_IMAGE_INFO_2;
+    p_next:           *void;
+    src_image:        Image;
+    src_image_layout: Image_Layout;
+    dst_image:        Image;
+    dst_image_layout: Image_Layout;
+    region_count:     u32;
+    p_regions:        *Image_Blit_2;
+    filter:           Filter;
+}
+
+Image_Blit_2 :: struct {
+    s_type :=        Structure_Type.IMAGE_BLIT_2;
+    p_next:          *void;
+    src_subresource: Image_Subresource_Layers;
+    src_offsets:     [2]Offset_3D;
+    dst_subresource: Image_Subresource_Layers;
+    dst_offsets:     [2]Offset_3D;
+}
+
 Submit_Info_2 :: struct {
     s_type :=                    Structure_Type.SUBMIT_INFO_2;
     p_next:                      *void;
@@ -1139,6 +1160,11 @@ Swapchain_Create_Info_KHR :: struct {
 // =========================================================================
 // Procedures
 // =========================================================================
+
+cmd_blit_image_2 :: (
+    command_buffer: Command_Buffer,
+    p_blit_image_info: *Blit_Image_Info_2,
+) -> void #foreign libvulkan "vkCmdBlitImage2";
 
 queue_submit_2 :: inline (
     queue:   Queue,

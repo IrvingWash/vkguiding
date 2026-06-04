@@ -150,42 +150,50 @@ draw :: () {
         assert_result(result, "Failed to begin command buffer");
     }
 
-    // Transition swapchain image to be suitable for drawing
+    // Transition draw image to be suitable for drawing
     transition_image(
         get_current_frame_data().command_buffer,
-        renderer.swapchain_images[swapchain_image_index],
+        renderer.draw_image.image,
         VK.Image_Layout.UNDEFINED,
         VK.Image_Layout.GENERAL,
         VK.Image_Aspect_Flags.COLOR,
     );
 
-    // Clear image
-    {
-        clear_color_value: VK.Clear_Color_Value;
-        clear_color_value._float32 = float.[0, 0, 0.1, 1];
+    draw_background();
 
-        clear_range := VK.Image_Subresource_Range.{
-            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
-            base_mip_level   = 0,
-            level_count      = 1,
-            base_array_layer = 0,
-            layer_count      = 1,
-        };
-
-        VK.cmd_clear_color_image(
-            get_current_frame_data().command_buffer,
-            renderer.swapchain_images[swapchain_image_index],
-            VK.Image_Layout.GENERAL,
-            *clear_color_value,
-            .[clear_range],
-        );
-    }
-
-    // Transition swapchain image back to be suitable for presenting
+    // Transition draw image and swapchain image to transfer layout
+    transition_image(
+        get_current_frame_data().command_buffer,
+        renderer.draw_image.image,
+        VK.Image_Layout.GENERAL,
+        VK.Image_Layout.TRANSFER_SRC_OPTIMAL,
+        VK.Image_Aspect_Flags.COLOR,
+    );
     transition_image(
         get_current_frame_data().command_buffer,
         renderer.swapchain_images[swapchain_image_index],
-        VK.Image_Layout.GENERAL,
+        VK.Image_Layout.UNDEFINED,
+        VK.Image_Layout.TRANSFER_DST_OPTIMAL,
+        VK.Image_Aspect_Flags.COLOR,
+    );
+
+    // Copy from draw image to swapchain image
+    copy_image_to_image(
+        get_current_frame_data().command_buffer,
+        renderer.draw_image.image,
+        renderer.swapchain_images[swapchain_image_index],
+        VK.Extent_2D.{
+            renderer.draw_image.extent.width,
+            renderer.draw_image.extent.height
+        },
+        renderer.swapchain_info.image_extent,
+    );
+
+    // Transition swapchain image to presentable layout
+    transition_image(
+        get_current_frame_data().command_buffer,
+        renderer.swapchain_images[swapchain_image_index],
+        VK.Image_Layout.TRANSFER_DST_OPTIMAL,
         VK.Image_Layout.PRESENT_SRC_KHR,
         VK.Image_Aspect_Flags.COLOR,
     );
@@ -273,6 +281,75 @@ VALIDATION_LAYERS :: *u8.[
 DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
+
+draw_background :: () {
+    // Clear background
+    {
+        clear_color_value: VK.Clear_Color_Value;
+        clear_color_value._float32 = float.[0, 0, 0.1, 1];
+
+        clear_range := VK.Image_Subresource_Range.{
+            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+            base_mip_level   = 0,
+            level_count      = 1,
+            base_array_layer = 0,
+            layer_count      = 1,
+        };
+
+        VK.cmd_clear_color_image(
+            get_current_frame_data().command_buffer,
+            renderer.draw_image.image,
+            VK.Image_Layout.GENERAL,
+            *clear_color_value,
+            .[clear_range],
+        );
+    }
+}
+
+copy_image_to_image :: (
+    command_buffer: VK.Command_Buffer,
+    src_image:      VK.Image,
+    dst_image:      VK.Image,
+    src_size:       VK.Extent_2D,
+    dst_size:       VK.Extent_2D,
+) {
+    blit_region := VK.Image_Blit_2.{
+        src_subresource = VK.Image_Subresource_Layers.{
+            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+            mip_level        = 0,
+            base_array_layer = 0,
+            layer_count      = 1,
+        },
+        src_offsets[1] = VK.Offset_3D.{
+            x = xx src_size.width,
+            y = xx src_size.height,
+            z = 1,
+        },
+        dst_subresource = VK.Image_Subresource_Layers.{
+            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+            mip_level        = 0,
+            base_array_layer = 0,
+            layer_count      = 1,
+        },
+        dst_offsets[1] = VK.Offset_3D.{
+            x = xx dst_size.width,
+            y = xx dst_size.height,
+            z = 1,
+        },
+    };
+
+    blit_info := VK.Blit_Image_Info_2.{
+        src_image        = src_image,
+        src_image_layout = VK.Image_Layout.TRANSFER_SRC_OPTIMAL,
+        dst_image        = dst_image,
+        dst_image_layout = VK.Image_Layout.TRANSFER_DST_OPTIMAL,
+        region_count     = 1,
+        p_regions        = *blit_region,
+        filter           = VK.Filter.LINEAR,
+    };
+
+    VK.cmd_blit_image_2(command_buffer, *blit_info);
+}
 
 init_draw_image :: () -> Allocated_Image {
     allocated_image := Allocated_Image.{
