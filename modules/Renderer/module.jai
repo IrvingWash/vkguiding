@@ -109,21 +109,23 @@ deinit :: () {
 draw :: () {
     defer renderer.frame_number += 1;
 
+    frame_datalet := get_current_frame_data();
+
     // Wait for fences and reset stuff
     {
         result := VK.wait_for_fence(
             renderer.device,
-            get_current_frame_data().render_fence,
+            frame_datalet.render_fence,
             SECOND_IN_NANO,
         );
         assert_result(result, "Failed to wait for render fence");
         result = VK.reset_fence(
             renderer.device,
-            get_current_frame_data().render_fence,
+            frame_datalet.render_fence,
         );
         assert_result(result, "Failed to reset render fence");
     }
-    VK.reset_command_buffer(get_current_frame_data().command_buffer, 0);
+    VK.reset_command_buffer(frame_datalet.command_buffer, 0);
 
     // Get next swapchain image index
     swapchain_image_index: u32 = ---;
@@ -132,7 +134,7 @@ draw :: () {
             renderer.device,
             renderer.swapchain,
             SECOND_IN_NANO,
-            get_current_frame_data().swapchain_semaphore,
+            frame_datalet.swapchain_semaphore,
             null,
         );
     }
@@ -144,7 +146,7 @@ draw :: () {
         };
 
         result := VK.begin_command_buffer(
-            get_current_frame_data().command_buffer,
+            frame_datalet.command_buffer,
             *begin_info,
         );
         assert_result(result, "Failed to begin command buffer");
@@ -152,25 +154,25 @@ draw :: () {
 
     // Transition draw image to be suitable for drawing
     transition_image(
-        get_current_frame_data().command_buffer,
+        frame_datalet.command_buffer,
         renderer.draw_image.image,
         VK.Image_Layout.UNDEFINED,
         VK.Image_Layout.GENERAL,
         VK.Image_Aspect_Flags.COLOR,
     );
 
-    draw_background();
+    draw_background(frame_datalet.command_buffer);
 
     // Transition draw image and swapchain image to transfer layout
     transition_image(
-        get_current_frame_data().command_buffer,
+        frame_datalet.command_buffer,
         renderer.draw_image.image,
         VK.Image_Layout.GENERAL,
         VK.Image_Layout.TRANSFER_SRC_OPTIMAL,
         VK.Image_Aspect_Flags.COLOR,
     );
     transition_image(
-        get_current_frame_data().command_buffer,
+        frame_datalet.command_buffer,
         renderer.swapchain_images[swapchain_image_index],
         VK.Image_Layout.UNDEFINED,
         VK.Image_Layout.TRANSFER_DST_OPTIMAL,
@@ -179,7 +181,7 @@ draw :: () {
 
     // Copy from draw image to swapchain image
     copy_image_to_image(
-        get_current_frame_data().command_buffer,
+        frame_datalet.command_buffer,
         renderer.draw_image.image,
         renderer.swapchain_images[swapchain_image_index],
         VK.Extent_2D.{
@@ -191,7 +193,7 @@ draw :: () {
 
     // Transition swapchain image to presentable layout
     transition_image(
-        get_current_frame_data().command_buffer,
+        frame_datalet.command_buffer,
         renderer.swapchain_images[swapchain_image_index],
         VK.Image_Layout.TRANSFER_DST_OPTIMAL,
         VK.Image_Layout.PRESENT_SRC_KHR,
@@ -200,23 +202,23 @@ draw :: () {
 
     // End command buffer (it's unrecordable after this)
     {
-        result := VK.end_command_buffer(get_current_frame_data().command_buffer);
+        result := VK.end_command_buffer(frame_datalet.command_buffer);
         assert_result(result, "Failed to end command buffer");
     }
 
     // Submitting
     {
         command_buffer_submit_info := VK.Command_Buffer_Submit_Info.{
-            command_buffer = get_current_frame_data().command_buffer,
+            command_buffer = frame_datalet.command_buffer,
         };
 
         wait_submit_info := VK.Semaphore_Submit_Info.{
-            semaphore  = get_current_frame_data().swapchain_semaphore,
+            semaphore  = frame_datalet.swapchain_semaphore,
             value      = 1,
             stage_mask = VK.Pipeline_Stage_Flags_2.COLOR_ATTACHMENT_OUTPUT_KHR,
         };
         signal_submit_info := VK.Semaphore_Submit_Info.{
-            semaphore  = get_current_frame_data().render_semaphore,
+            semaphore  = frame_datalet.render_semaphore,
             value      = 1,
             stage_mask = VK.Pipeline_Stage_Flags_2.ALL_GRAPHICS,
         };
@@ -233,7 +235,7 @@ draw :: () {
         result := VK.queue_submit_2(
             renderer.graphics_queue,
             .[submit_info],
-            get_current_frame_data().render_fence,
+            frame_datalet.render_fence,
         );
         assert_result(result, "Failed to submit queue");
     }
@@ -242,7 +244,7 @@ draw :: () {
     {
         present_info := VK.Present_Info_KHR.{
             wait_semaphore_count = 1,
-            p_wait_semaphores    = *get_current_frame_data().render_semaphore,
+            p_wait_semaphores    = *frame_datalet.render_semaphore,
             swapchain_count      = 1,
             p_swapchains         = *renderer.swapchain,
             p_image_indices      = *swapchain_image_index,
@@ -282,7 +284,7 @@ DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
 
-draw_background :: () {
+draw_background :: (command_buffer: VK.Command_Buffer) {
     // Clear background
     {
         clear_color_value: VK.Clear_Color_Value;
@@ -297,7 +299,7 @@ draw_background :: () {
         };
 
         VK.cmd_clear_color_image(
-            get_current_frame_data().command_buffer,
+            command_buffer,
             renderer.draw_image.image,
             VK.Image_Layout.GENERAL,
             *clear_color_value,
