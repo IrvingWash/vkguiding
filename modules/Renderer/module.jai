@@ -107,7 +107,7 @@ deinit :: () {
 }
 
 draw :: () {
-    renderer.frame_number += 1;
+    defer renderer.frame_number += 1;
 
     // Wait for fences and reset stuff
     {
