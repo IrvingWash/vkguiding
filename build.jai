@@ -10,6 +10,13 @@
 
 #load "compile_shaders.jai";
 
+CONFIG_FLAGS :: struct {
+    OPTIMIZED      :: "--optimized";
+    DEBUG          :: "--debug";
+    VERY_OPTIMIZED :: "--very-optimized";
+    VERY_DEBUG     :: "--very-debug";
+}
+
 Config :: struct {
     optimization_type: Optimization_Type;
     plugins_to_create: [..]Plugin_To_Create;
@@ -173,10 +180,14 @@ create_config :: (arguments: []string) -> error: string, Config {
 
     for argument: arguments {
         if argument == {
-            case "--optimized";
-                config.optimization_type = .VERY_OPTIMIZED;
-            case "--debug";
+            case CONFIG_FLAGS.DEBUG;
                 config.optimization_type = .DEBUG;
+            case CONFIG_FLAGS.VERY_DEBUG;
+                config.optimization_type = .VERY_DEBUG;
+            case CONFIG_FLAGS.OPTIMIZED;
+                config.optimization_type = .OPTIMIZED;
+            case CONFIG_FLAGS.VERY_OPTIMIZED;
+                config.optimization_type = .VERY_OPTIMIZED;
             case;
                 PLUGIN_ARGUMENT_PREFIX :: "+";
 
