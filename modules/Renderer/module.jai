@@ -27,6 +27,8 @@ Renderer :: struct {
 
     frame_data: [FRAME_OVERLAP]Frame_Data;
 
+    draw_image:        Allocated_Image;
+
     get_window_framebuffer_size: Get_Window_Framebuffer_Size;
 }
 
@@ -77,10 +79,14 @@ init :: (
         result:, renderer.allocator = VMA.create_allocator(*allocator_info);
         assert_result(result, "Failed to create allocator");
     }
+
+    renderer.draw_image = init_draw_image();
 }
 
 deinit :: () {
     VK.device_wait_idle(renderer.device);
+
+    destroy_allocated_image(renderer.draw_image);
 
     VMA.destroy_allocator(renderer.allocator);
 
@@ -101,23 +107,25 @@ deinit :: () {
 }
 
 draw :: () {
-    renderer.frame_number += 1;
+    defer renderer.frame_number += 1;
+
+    frame_datalet := get_current_frame_data();
 
     // Wait for fences and reset stuff
     {
         result := VK.wait_for_fence(
             renderer.device,
-            get_current_frame_data().render_fence,
+            frame_datalet.render_fence,
             SECOND_IN_NANO,
         );
         assert_result(result, "Failed to wait for render fence");
         result = VK.reset_fence(
             renderer.device,
-            get_current_frame_data().render_fence,
+            frame_datalet.render_fence,
         );
         assert_result(result, "Failed to reset render fence");
     }
-    VK.reset_command_buffer(get_current_frame_data().command_buffer, 0);
+    VK.reset_command_buffer(frame_datalet.command_buffer, 0);
 
     // Get next swapchain image index
     swapchain_image_index: u32 = ---;
@@ -126,7 +134,7 @@ draw :: () {
             renderer.device,
             renderer.swapchain,
             SECOND_IN_NANO,
-            get_current_frame_data().swapchain_semaphore,
+            frame_datalet.swapchain_semaphore,
             null,
         );
     }
@@ -138,71 +146,79 @@ draw :: () {
         };
 
         result := VK.begin_command_buffer(
-            get_current_frame_data().command_buffer,
+            frame_datalet.command_buffer,
             *begin_info,
         );
         assert_result(result, "Failed to begin command buffer");
     }
 
-    // Transition swapchain image to be suitable for drawing
+    // Transition draw image to be suitable for drawing
     transition_image(
-        get_current_frame_data().command_buffer,
-        renderer.swapchain_images[swapchain_image_index],
+        frame_datalet.command_buffer,
+        renderer.draw_image.image,
         VK.Image_Layout.UNDEFINED,
         VK.Image_Layout.GENERAL,
         VK.Image_Aspect_Flags.COLOR,
     );
 
-    // Clear image
-    {
-        clear_color_value: VK.Clear_Color_Value;
-        clear_color_value._float32 = float.[1, 0, 0, 1];
+    draw_background(frame_datalet.command_buffer);
 
-        clear_range := VK.Image_Subresource_Range.{
-            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
-            base_mip_level   = 0,
-            level_count      = 1,
-            base_array_layer = 0,
-            layer_count      = 1,
-        };
-
-        VK.cmd_clear_color_image(
-            get_current_frame_data().command_buffer,
-            renderer.swapchain_images[swapchain_image_index],
-            VK.Image_Layout.GENERAL,
-            *clear_color_value,
-            .[clear_range],
-        );
-    }
-
-    // Transition swapchain image back to be suitable for presenting
+    // Transition draw image and swapchain image to transfer layout
     transition_image(
-        get_current_frame_data().command_buffer,
-        renderer.swapchain_images[swapchain_image_index],
+        frame_datalet.command_buffer,
+        renderer.draw_image.image,
         VK.Image_Layout.GENERAL,
+        VK.Image_Layout.TRANSFER_SRC_OPTIMAL,
+        VK.Image_Aspect_Flags.COLOR,
+    );
+    transition_image(
+        frame_datalet.command_buffer,
+        renderer.swapchain_images[swapchain_image_index],
+        VK.Image_Layout.UNDEFINED,
+        VK.Image_Layout.TRANSFER_DST_OPTIMAL,
+        VK.Image_Aspect_Flags.COLOR,
+    );
+
+    // Copy from draw image to swapchain image
+    copy_image_to_image(
+        frame_datalet.command_buffer,
+        renderer.draw_image.image,
+        renderer.swapchain_images[swapchain_image_index],
+        VK.Extent_2D.{
+            renderer.draw_image.extent.width,
+            renderer.draw_image.extent.height
+        },
+        renderer.swapchain_info.image_extent,
+    );
+
+    // Transition swapchain image to presentable layout
+    transition_image(
+        frame_datalet.command_buffer,
+        renderer.swapchain_images[swapchain_image_index],
+        VK.Image_Layout.TRANSFER_DST_OPTIMAL,
         VK.Image_Layout.PRESENT_SRC_KHR,
         VK.Image_Aspect_Flags.COLOR,
     );
 
     // End command buffer (it's unrecordable after this)
     {
-        result := VK.end_command_buffer(get_current_frame_data().command_buffer);
+        result := VK.end_command_buffer(frame_datalet.command_buffer);
         assert_result(result, "Failed to end command buffer");
     }
 
     // Submitting
     {
         command_buffer_submit_info := VK.Command_Buffer_Submit_Info.{
-            command_buffer = get_current_frame_data().command_buffer,
+            command_buffer = frame_datalet.command_buffer,
         };
 
         wait_submit_info := VK.Semaphore_Submit_Info.{
-            semaphore  = get_current_frame_data().swapchain_semaphore,
+            semaphore  = frame_datalet.swapchain_semaphore,
             value      = 1,
             stage_mask = VK.Pipeline_Stage_Flags_2.COLOR_ATTACHMENT_OUTPUT_KHR,
         };
         signal_submit_info := VK.Semaphore_Submit_Info.{
-            semaphore  = get_current_frame_data().render_semaphore,
+            semaphore  = frame_datalet.render_semaphore,
             value      = 1,
             stage_mask = VK.Pipeline_Stage_Flags_2.ALL_GRAPHICS,
         };
@@ -219,7 +235,7 @@ draw :: () {
         result := VK.queue_submit_2(
             renderer.graphics_queue,
             .[submit_info],
-            get_current_frame_data().render_fence,
+            frame_datalet.render_fence,
         );
         assert_result(result, "Failed to submit queue");
     }
@@ -228,7 +244,7 @@ draw :: () {
     {
         present_info := VK.Present_Info_KHR.{
             wait_semaphore_count = 1,
-            p_wait_semaphores    = *get_current_frame_data().render_semaphore,
+            p_wait_semaphores    = *frame_datalet.render_semaphore,
             swapchain_count      = 1,
             p_swapchains         = *renderer.swapchain,
             p_image_indices      = *swapchain_image_index,
@@ -267,6 +283,134 @@ VALIDATION_LAYERS :: *u8.[
 DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
+
+draw_background :: (command_buffer: VK.Command_Buffer) {
+    // Clear background
+    {
+        clear_color_value: VK.Clear_Color_Value;
+        clear_color_value._float32 = float.[0, 0, 0.1, 1];
+
+        clear_range := VK.Image_Subresource_Range.{
+            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+            base_mip_level   = 0,
+            level_count      = 1,
+            base_array_layer = 0,
+            layer_count      = 1,
+        };
+
+        VK.cmd_clear_color_image(
+            command_buffer,
+            renderer.draw_image.image,
+            VK.Image_Layout.GENERAL,
+            *clear_color_value,
+            .[clear_range],
+        );
+    }
+}
+
+copy_image_to_image :: (
+    command_buffer: VK.Command_Buffer,
+    src_image:      VK.Image,
+    dst_image:      VK.Image,
+    src_size:       VK.Extent_2D,
+    dst_size:       VK.Extent_2D,
+) {
+    blit_region := VK.Image_Blit_2.{
+        src_subresource = VK.Image_Subresource_Layers.{
+            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+            mip_level        = 0,
+            base_array_layer = 0,
+            layer_count      = 1,
+        },
+        src_offsets[1] = VK.Offset_3D.{
+            x = xx src_size.width,
+            y = xx src_size.height,
+            z = 1,
+        },
+        dst_subresource = VK.Image_Subresource_Layers.{
+            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+            mip_level        = 0,
+            base_array_layer = 0,
+            layer_count      = 1,
+        },
+        dst_offsets[1] = VK.Offset_3D.{
+            x = xx dst_size.width,
+            y = xx dst_size.height,
+            z = 1,
+        },
+    };
+
+    blit_info := VK.Blit_Image_Info_2.{
+        src_image        = src_image,
+        src_image_layout = VK.Image_Layout.TRANSFER_SRC_OPTIMAL,
+        dst_image        = dst_image,
+        dst_image_layout = VK.Image_Layout.TRANSFER_DST_OPTIMAL,
+        region_count     = 1,
+        p_regions        = *blit_region,
+        filter           = VK.Filter.LINEAR,
+    };
+
+    VK.cmd_blit_image_2(command_buffer, *blit_info);
+}
+
+init_draw_image :: () -> Allocated_Image {
+    allocated_image := Allocated_Image.{
+        format = VK.Format.R16G16B16A16_SFLOAT,
+        extent = VK.Extent_3D.{
+            width  = renderer.swapchain_info.image_extent.width,
+            height = renderer.swapchain_info.image_extent.height,
+            depth  = 1,
+        },
+    };
+
+    // Image and allocation
+    {
+        image_create_info := VK.Image_Create_Info.{
+            image_type   = VK.Image_Type._2D,
+            format       = allocated_image.format,
+            extent       = allocated_image.extent,
+            mip_levels   = 1,
+            array_layers = 1,
+            samples      = VK.Sample_Count_Flags._1,
+            tiling       = VK.Image_Tiling.OPTIMAL,
+            usage        = VK.Image_Usage_Flags.TRANSFER_SRC | .TRANSFER_DST | .STORAGE | .COLOR_ATTACHMENT,
+        };
+
+        image_allocation_create_info := VMA.Allocation_Create_Info.{
+            usage          = VMA.Memory_Usage.GPU_ONLY,
+            required_flags = VK.Memory_Property_Flags.DEVICE_LOCAL,
+        };
+
+        result:, allocated_image.image, allocated_image.allocation = VMA.create_image(
+            renderer.allocator,
+            *image_create_info,
+            *image_allocation_create_info,
+            null,
+        );
+        assert_result(result, "Failed to create image");
+    }
+
+    // Image View
+    {
+        image_view_create_info := VK.Image_View_Create_Info.{
+            view_type         = VK.Image_View_Type._2D,
+            format            = allocated_image.format,
+            image             = allocated_image.image,
+            subresource_range = VK.Image_Subresource_Range.{
+                aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+                base_mip_level   = 0,
+                level_count      = 1,
+                base_array_layer = 0,
+                layer_count      = 1,
+            },
+        };
+
+        result:, allocated_image.view = VK.create_image_view(renderer.device, *image_view_create_info);
+        assert_result(result, "Failed to create image view");
+    }
+
+    return allocated_image;
+}
 
 transition_image :: (
     cmd:            VK.Command_Buffer,
@@ -628,3 +772,5 @@ assert_result :: (result: VK.Result, message: string) {
 #import "Basic";
 VK  :: #import "Jai_Vulkan";
 VMA :: #import "Jai_Vulkan/VMA";
+
+#load "utils.jai";
