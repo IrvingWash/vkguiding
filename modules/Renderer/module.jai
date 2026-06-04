@@ -27,6 +27,8 @@ Renderer :: struct {
 
     frame_data: [FRAME_OVERLAP]Frame_Data;
 
+    draw_image:        Allocated_Image;
+
     get_window_framebuffer_size: Get_Window_Framebuffer_Size;
 }
 
@@ -77,10 +79,14 @@ init :: (
         result:, renderer.allocator = VMA.create_allocator(*allocator_info);
         assert_result(result, "Failed to create allocator");
     }
+
+    renderer.draw_image = init_draw_image();
 }
 
 deinit :: () {
     VK.device_wait_idle(renderer.device);
+
+    destroy_allocated_image(renderer.draw_image);
 
     VMA.destroy_allocator(renderer.allocator);
 
@@ -156,7 +162,7 @@ draw :: () {
     // Clear image
     {
         clear_color_value: VK.Clear_Color_Value;
-        clear_color_value._float32 = float.[1, 0, 0, 1];
+        clear_color_value._float32 = float.[0, 0, 0.1, 1];
 
         clear_range := VK.Image_Subresource_Range.{
             aspect_mask      = VK.Image_Aspect_Flags.COLOR,
@@ -267,6 +273,65 @@ VALIDATION_LAYERS :: *u8.[
 DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
+
+init_draw_image :: () -> Allocated_Image {
+    allocated_image := Allocated_Image.{
+        format = VK.Format.R16G16B16A16_SFLOAT,
+        extent = VK.Extent_3D.{
+            width  = renderer.swapchain_info.image_extent.width,
+            height = renderer.swapchain_info.image_extent.height,
+            depth  = 1,
+        },
+    };
+
+    // Image and allocation
+    {
+        image_create_info := VK.Image_Create_Info.{
+            image_type   = VK.Image_Type._2D,
+            format       = allocated_image.format,
+            extent       = allocated_image.extent,
+            mip_levels   = 1,
+            array_layers = 1,
+            samples      = VK.Sample_Count_Flags._1,
+            tiling       = VK.Image_Tiling.OPTIMAL,
+            usage        = VK.Image_Usage_Flags.TRANSFER_SRC | .TRANSFER_DST | .STORAGE | .COLOR_ATTACHMENT,
+        };
+
+        image_allocation_create_info := VMA.Allocation_Create_Info.{
+            usage          = VMA.Memory_Usage.GPU_ONLY,
+            required_flags = VK.Memory_Property_Flags.DEVICE_LOCAL,
+        };
+
+        result:, allocated_image.image, allocated_image.allocation = VMA.create_image(
+            renderer.allocator,
+            *image_create_info,
+            *image_allocation_create_info,
+            null,
+        );
+        assert_result(result, "Failed to create image");
+    }
+
+    // Image View
+    {
+        image_view_create_info := VK.Image_View_Create_Info.{
+            view_type         = VK.Image_View_Type._2D,
+            format            = allocated_image.format,
+            image             = allocated_image.image,
+            subresource_range = VK.Image_Subresource_Range.{
+                aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+                base_mip_level   = 0,
+                level_count      = 1,
+                base_array_layer = 0,
+                layer_count      = 1,
+            },
+        };
+
+        result:, allocated_image.view = VK.create_image_view(renderer.device, *image_view_create_info);
+        assert_result(result, "Failed to create image view");
+    }
+
+    return allocated_image;
+}
 
 transition_image :: (
     cmd:            VK.Command_Buffer,
@@ -628,3 +693,5 @@ assert_result :: (result: VK.Result, message: string) {
 #import "Basic";
 VK  :: #import "Jai_Vulkan";
 VMA :: #import "Jai_Vulkan/VMA";
+
+#load "utils.jai";
