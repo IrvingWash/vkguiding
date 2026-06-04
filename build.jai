@@ -8,6 +8,8 @@
 #import "File_Utilities";
 #import "Process";
 
+#load "compile_shaders.jai";
+
 Config :: struct {
     optimization_type: Optimization_Type;
     plugins_to_create: [..]Plugin_To_Create;
@@ -27,14 +29,22 @@ Config :: struct {
         return;
     }
 
-    error = build(build_options_dc, config);
+    output_path := make_output_path(config);
+
+    error = compile_shaders(output_path);
+    if error {
+        print("Failed to compile shaders: %", error, to_standard_error = true);
+        return;
+    }
+
+    error = build(build_options_dc, config, output_path);
     if error {
         print("Failed to build: %", error, to_standard_error = true);
         return;
     }
 }
 
-build :: (build_options_dc: Build_Options, config: Config) -> error: string {
+build :: (build_options_dc: Build_Options, config: Config, output_path: string) -> error: string {
     print("Building with % optimization\n", config.optimization_type);
     for plugin_to_create: config.plugins_to_create {
         print("% plugin enabled\n", plugin_to_create.name);
@@ -44,8 +54,6 @@ build :: (build_options_dc: Build_Options, config: Config) -> error: string {
 
     ENTRY_FILE_PATH :: "source/main.jai";
     EXECUTABLE_NAME :: "target";
-
-    output_path := make_output_path(config);
 
     {
         build_options := get_build_options(workspace);
