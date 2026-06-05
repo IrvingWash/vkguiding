@@ -31,8 +31,11 @@ Renderer :: struct {
 
     global_descriptor_pool: VK.Descriptor_Pool;
 
-    draw_image_descriptor_set: VK.Descriptor_Set;
+    draw_image_descriptor_set:        VK.Descriptor_Set;
     draw_image_descriptor_set_layout: VK.Descriptor_Set_Layout;
+
+    gradient_pipeline:        VK.Pipeline;
+    gradient_pipeline_layout: VK.Pipeline_Layout;
 
     get_window_framebuffer_size: Get_Window_Framebuffer_Size;
 }
@@ -90,10 +93,16 @@ init :: (
     renderer.global_descriptor_pool,
     renderer.draw_image_descriptor_set_layout,
     renderer.draw_image_descriptor_set = init_descriptors();
+
+    renderer.gradient_pipeline,
+    renderer.gradient_pipeline_layout = init_pipelines();
 }
 
 deinit :: () {
     VK.device_wait_idle(renderer.device);
+
+    VK.destroy_pipeline_layout(renderer.device, renderer.gradient_pipeline_layout);
+    VK.destroy_pipeline(renderer.device, renderer.gradient_pipeline);
 
     VK.destroy_descriptor_pool(renderer.device, renderer.global_descriptor_pool);
     VK.destroy_descriptor_set_layout(renderer.device, renderer.draw_image_descriptor_set_layout);
@@ -295,6 +304,80 @@ VALIDATION_LAYERS :: *u8.[
 DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
+
+init_background_pipelines :: () -> VK.Pipeline, VK.Pipeline_Layout {
+    compute_layout: VK.Pipeline_Layout = ---;
+    {
+        compute_layout_info := VK.Pipeline_Layout_Create_Info.{
+            set_layout_count = 1,
+            p_set_layouts    = *renderer.draw_image_descriptor_set_layout,
+        };
+
+        result:, compute_layout = VK.create_pipeline_layout(
+            renderer.device,
+            *compute_layout_info,
+        );
+        assert_result(result, "Failed to create pipeline layout");
+    }
+
+    compute_pipeline: VK.Pipeline = ---;
+    {
+        shader_module := create_shader_module("gradient.spv");
+        defer VK.destroy_shader_module(renderer.device, shader_module);
+
+        shader_stage_info := VK.Pipeline_Shader_Stage_Create_Info.{
+            stage = VK.Shader_Stage_Flags.COMPUTE,
+            module = shader_module,
+            p_name = "main",
+        };
+
+        pipeline_create_info := VK.Compute_Pipeline_Create_Info.{
+            stage = shader_stage_info,
+            layout = compute_layout,
+        };
+
+        result:, compute_pipeline = VK.create_compute_pipeline(
+            renderer.device,
+            null,
+            *pipeline_create_info,
+        );
+        assert_result(result, "Failed to create compute pipeline");
+    }
+
+    return compute_pipeline, compute_layout;
+};
+
+init_pipelines :: () -> VK.Pipeline, VK.Pipeline_Layout {
+    pipeline, layout := init_background_pipelines();
+
+    return pipeline, layout;
+}
+
+create_shader_module :: (name: string) -> VK.Shader_Module {
+    File   :: #import "File";
+    System :: #import "System";
+    String :: #import "String";
+
+    path := tprint(
+        "%/shaders/%",
+        String.path_strip_filename(System.get_path_of_running_executable()),
+        name,
+    );
+
+    content, ok := File.read_entire_file(path);
+    assert(ok, "Failed to read shader at '%'", path);
+    defer free(content);
+
+    shader_module_info := VK.Shader_Module_Create_Info.{
+        code_size = xx (content.count * size_of(u8)),
+        p_code    = cast(*u32, content.data),
+    };
+
+    result, module := VK.create_shader_module(renderer.device, *shader_module_info);
+    assert_result(result, "Failed to create shader module");
+
+    return module;
+};
 
 init_descriptors :: () -> VK.Descriptor_Pool,
     VK.Descriptor_Set_Layout,
