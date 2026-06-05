@@ -1171,6 +1171,13 @@ Swapchain_Create_Info_KHR :: struct {
 // Procedures
 // =========================================================================
 
+cmd_dispatch :: (
+    cnmmand_buffer: Command_Buffer,
+    group_count_x:  u32,
+    group_count_y:  u32,
+    group_count_z:  u32,
+) -> void #foreign libvulkan "vkCmdDispatch";
+
 create_compute_pipeline :: inline (
     device:         Device,
     pipeline_cache: Pipeline_Cache,

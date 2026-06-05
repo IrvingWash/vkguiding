@@ -441,27 +441,46 @@ init_descriptors :: () -> VK.Descriptor_Pool,
 }
 
 draw_background :: (command_buffer: VK.Command_Buffer) {
-    // Clear background
-    {
-        clear_color_value: VK.Clear_Color_Value;
-        clear_color_value._float32 = float.[0, 0, 0.1, 1];
+    // clear_color_value: VK.Clear_Color_Value;
+    // clear_color_value._float32 = float.[0, 0, 0.1, 1];
+    //
+    // clear_range := VK.Image_Subresource_Range.{
+    //     aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+    //     base_mip_level   = 0,
+    //     level_count      = 1,
+    //     base_array_layer = 0,
+    //     layer_count      = 1,
+    // };
+    //
+    // VK.cmd_clear_color_image(
+    //     command_buffer,
+    //     renderer.draw_image.image,
+    //     VK.Image_Layout.GENERAL,
+    //     *clear_color_value,
+    //     .[clear_range],
+    // );
 
-        clear_range := VK.Image_Subresource_Range.{
-            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
-            base_mip_level   = 0,
-            level_count      = 1,
-            base_array_layer = 0,
-            layer_count      = 1,
-        };
+    VK.cmd_bind_pipeline(
+        command_buffer,
+        VK.Pipeline_Bind_Point.COMPUTE,
+        renderer.gradient_pipeline,
+    );
 
-        VK.cmd_clear_color_image(
-            command_buffer,
-            renderer.draw_image.image,
-            VK.Image_Layout.GENERAL,
-            *clear_color_value,
-            .[clear_range],
-        );
-    }
+    VK.cmd_bind_descriptor_sets(
+        command_buffer,
+        VK.Pipeline_Bind_Point.COMPUTE,
+        renderer.gradient_pipeline_layout,
+        0,
+        .[renderer.draw_image_descriptor_set],
+        .[],
+    );
+
+    VK.cmd_dispatch(
+        command_buffer,
+        xx ceil(renderer.draw_image.extent.width / 16.0),
+        xx ceil(renderer.draw_image.extent.height / 16.0),
+        1,
+    );
 }
 
 copy_image_to_image :: (
@@ -922,6 +941,7 @@ destroy_swapchain :: () {
 }
 
 #import "Basic";
+#import "Math";
 VK  :: #import "Jai_Vulkan";
 VMA :: #import "Jai_Vulkan/VMA";
 
