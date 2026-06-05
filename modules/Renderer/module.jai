@@ -27,7 +27,15 @@ Renderer :: struct {
 
     frame_data: [FRAME_OVERLAP]Frame_Data;
 
-    draw_image:        Allocated_Image;
+    draw_image: Allocated_Image;
+
+    global_descriptor_pool: VK.Descriptor_Pool;
+
+    draw_image_descriptor_set:        VK.Descriptor_Set;
+    draw_image_descriptor_set_layout: VK.Descriptor_Set_Layout;
+
+    gradient_pipeline:        VK.Pipeline;
+    gradient_pipeline_layout: VK.Pipeline_Layout;
 
     get_window_framebuffer_size: Get_Window_Framebuffer_Size;
 }
@@ -81,10 +89,23 @@ init :: (
     }
 
     renderer.draw_image = init_draw_image();
+
+    renderer.global_descriptor_pool,
+    renderer.draw_image_descriptor_set_layout,
+    renderer.draw_image_descriptor_set = init_descriptors();
+
+    renderer.gradient_pipeline,
+    renderer.gradient_pipeline_layout = init_pipelines();
 }
 
 deinit :: () {
     VK.device_wait_idle(renderer.device);
+
+    VK.destroy_pipeline_layout(renderer.device, renderer.gradient_pipeline_layout);
+    VK.destroy_pipeline(renderer.device, renderer.gradient_pipeline);
+
+    VK.destroy_descriptor_pool(renderer.device, renderer.global_descriptor_pool);
+    VK.destroy_descriptor_set_layout(renderer.device, renderer.draw_image_descriptor_set_layout);
 
     destroy_allocated_image(renderer.draw_image);
 
@@ -284,28 +305,182 @@ DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
 
-draw_background :: (command_buffer: VK.Command_Buffer) {
-    // Clear background
+init_background_pipelines :: () -> VK.Pipeline, VK.Pipeline_Layout {
+    compute_layout: VK.Pipeline_Layout = ---;
     {
-        clear_color_value: VK.Clear_Color_Value;
-        clear_color_value._float32 = float.[0, 0, 0.1, 1];
-
-        clear_range := VK.Image_Subresource_Range.{
-            aspect_mask      = VK.Image_Aspect_Flags.COLOR,
-            base_mip_level   = 0,
-            level_count      = 1,
-            base_array_layer = 0,
-            layer_count      = 1,
+        compute_layout_info := VK.Pipeline_Layout_Create_Info.{
+            set_layout_count = 1,
+            p_set_layouts    = *renderer.draw_image_descriptor_set_layout,
         };
 
-        VK.cmd_clear_color_image(
-            command_buffer,
-            renderer.draw_image.image,
-            VK.Image_Layout.GENERAL,
-            *clear_color_value,
-            .[clear_range],
+        result:, compute_layout = VK.create_pipeline_layout(
+            renderer.device,
+            *compute_layout_info,
+        );
+        assert_result(result, "Failed to create pipeline layout");
+    }
+
+    compute_pipeline: VK.Pipeline = ---;
+    {
+        shader_module := create_shader_module("gradient.spv");
+        defer VK.destroy_shader_module(renderer.device, shader_module);
+
+        shader_stage_info := VK.Pipeline_Shader_Stage_Create_Info.{
+            stage = VK.Shader_Stage_Flags.COMPUTE,
+            module = shader_module,
+            p_name = "main",
+        };
+
+        pipeline_create_info := VK.Compute_Pipeline_Create_Info.{
+            stage = shader_stage_info,
+            layout = compute_layout,
+        };
+
+        result:, compute_pipeline = VK.create_compute_pipeline(
+            renderer.device,
+            null,
+            *pipeline_create_info,
+        );
+        assert_result(result, "Failed to create compute pipeline");
+    }
+
+    return compute_pipeline, compute_layout;
+};
+
+init_pipelines :: () -> VK.Pipeline, VK.Pipeline_Layout {
+    pipeline, layout := init_background_pipelines();
+
+    return pipeline, layout;
+}
+
+create_shader_module :: (name: string) -> VK.Shader_Module {
+    File   :: #import "File";
+    System :: #import "System";
+    String :: #import "String";
+
+    path := tprint(
+        "%/shaders/%",
+        String.path_strip_filename(System.get_path_of_running_executable()),
+        name,
+    );
+
+    content, ok := File.read_entire_file(path);
+    assert(ok, "Failed to read shader at '%'", path);
+    defer free(content);
+
+    shader_module_info := VK.Shader_Module_Create_Info.{
+        code_size = xx (content.count * size_of(u8)),
+        p_code    = cast(*u32, content.data),
+    };
+
+    result, module := VK.create_shader_module(renderer.device, *shader_module_info);
+    assert_result(result, "Failed to create shader module");
+
+    return module;
+};
+
+init_descriptors :: () -> VK.Descriptor_Pool,
+    VK.Descriptor_Set_Layout,
+    VK.Descriptor_Set
+{
+    global_pool := create_descriptor_pool(
+        renderer.device,
+        .[
+            VK.Descriptor_Pool_Size.{
+                type             = VK.Descriptor_Type.STORAGE_IMAGE,
+                descriptor_count = 10,
+            },
+        ],
+        max_sets = 10,
+    );
+
+    draw_image_descriptor_set_layout := create_descriptor_set_layout(
+        renderer.device,
+        .[
+            VK.Descriptor_Set_Layout_Binding.{
+                binding          = 0,
+                descriptor_count = 1,
+                descriptor_type  = VK.Descriptor_Type.STORAGE_IMAGE,
+                stage_flags      = VK.Shader_Stage_Flags.COMPUTE,
+            },
+        ],
+        0,
+    );
+
+    draw_image_descriptor_set := allocate_descriptor_set(
+        renderer.device,
+        global_pool,
+        draw_image_descriptor_set_layout,
+    );
+
+    // Write data into the descriptor_set
+    {
+        descriptor_image_info := VK.Descriptor_Image_Info.{
+            image_view   = renderer.draw_image.view,
+            image_layout = VK.Image_Layout.GENERAL,
+        };
+
+        image_write := VK.Write_Descriptor_Set.{
+            dst_set          = draw_image_descriptor_set,
+            dst_binding      = 0,
+            descriptor_count = 1,
+            descriptor_type  = VK.Descriptor_Type.STORAGE_IMAGE,
+            p_image_info     = *descriptor_image_info,
+        };
+
+        VK.update_descriptor_sets(
+            renderer.device,
+            .[image_write],
+            .[],
         );
     }
+
+    return global_pool,
+        draw_image_descriptor_set_layout,
+        draw_image_descriptor_set;
+}
+
+draw_background :: (command_buffer: VK.Command_Buffer) {
+    // clear_color_value: VK.Clear_Color_Value;
+    // clear_color_value._float32 = float.[0, 0, 0.1, 1];
+    //
+    // clear_range := VK.Image_Subresource_Range.{
+    //     aspect_mask      = VK.Image_Aspect_Flags.COLOR,
+    //     base_mip_level   = 0,
+    //     level_count      = 1,
+    //     base_array_layer = 0,
+    //     layer_count      = 1,
+    // };
+    //
+    // VK.cmd_clear_color_image(
+    //     command_buffer,
+    //     renderer.draw_image.image,
+    //     VK.Image_Layout.GENERAL,
+    //     *clear_color_value,
+    //     .[clear_range],
+    // );
+
+    VK.cmd_bind_pipeline(
+        command_buffer,
+        VK.Pipeline_Bind_Point.COMPUTE,
+        renderer.gradient_pipeline,
+    );
+
+    VK.cmd_bind_descriptor_sets(
+        command_buffer,
+        VK.Pipeline_Bind_Point.COMPUTE,
+        renderer.gradient_pipeline_layout,
+        0,
+        .[renderer.draw_image_descriptor_set],
+        .[],
+    );
+
+    VK.cmd_dispatch(
+        command_buffer,
+        xx ceil(renderer.draw_image.extent.width / 16.0),
+        xx ceil(renderer.draw_image.extent.height / 16.0),
+        1,
+    );
 }
 
 copy_image_to_image :: (
@@ -765,11 +940,8 @@ destroy_swapchain :: () {
     VK.destroy_swapchain_khr(renderer.device, renderer.swapchain);
 }
 
-assert_result :: (result: VK.Result, message: string) {
-    assert(result == .SUCCESS, "%: %", message, result);
-}
-
 #import "Basic";
+#import "Math";
 VK  :: #import "Jai_Vulkan";
 VMA :: #import "Jai_Vulkan/VMA";
 

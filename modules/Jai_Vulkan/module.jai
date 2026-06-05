@@ -84,6 +84,16 @@ PFN_Free_Function :: #type (
 // Structs
 // =========================================================================
 
+Compute_Pipeline_Create_Info :: struct {
+    s_type :=             Structure_Type.COMPUTE_PIPELINE_CREATE_INFO;
+    p_next:               *void;
+    flags:                Pipeline_Create_Flags;
+    stage:                Pipeline_Shader_Stage_Create_Info;
+    layout:               Pipeline_Layout;
+    base_pipeline_handle: Pipeline;
+    base_pipeline_index:  s32;
+}
+
 Blit_Image_Info_2 :: struct {
     s_type :=         Structure_Type.BLIT_IMAGE_INFO_2;
     p_next:           *void;
@@ -764,8 +774,8 @@ Specialization_Info :: struct {
 }
 
 Pipeline_Shader_Stage_Create_Info :: struct {
-    s_type :=              Structure_Type.PIPELINE_SHADER_STAGE_CREATE_INFO;
-    p_nex:                 *void;
+    s_type                 := Structure_Type.PIPELINE_SHADER_STAGE_CREATE_INFO;
+    p_next:                *void;
     flags:                 Pipeline_Shader_Stage_Create_Flags;
     stage:                 Shader_Stage_Flags;
     module:                Shader_Module;
@@ -1161,6 +1171,54 @@ Swapchain_Create_Info_KHR :: struct {
 // Procedures
 // =========================================================================
 
+cmd_dispatch :: (
+    cnmmand_buffer: Command_Buffer,
+    group_count_x:  u32,
+    group_count_y:  u32,
+    group_count_z:  u32,
+) -> void #foreign libvulkan "vkCmdDispatch";
+
+create_compute_pipeline :: inline (
+    device:         Device,
+    pipeline_cache: Pipeline_Cache,
+    create_info:    *Compute_Pipeline_Create_Info,
+    p_allocator:    *Allocation_Callbacks = null,
+) -> Result, Pipeline {
+    pipeline: Pipeline = ---;
+
+    result := vkCreateComputePipelines(
+        device,
+        pipeline_cache,
+        1,
+        create_info,
+        p_allocator,
+        *pipeline,
+    );
+
+    return result, pipeline;
+}
+
+create_compute_pipelines :: inline (
+    device:         Device,
+    pipeline_cache: Pipeline_Cache,
+    create_infos:   []*Compute_Pipeline_Create_Info,
+    p_allocator:    *Allocation_Callbacks = null,
+) -> Result, [..]Pipeline {
+    pipelines: [..]Pipeline;
+    array_resize(*pipelines, create_infos.count);
+
+    result := vkCreateComputePipelines(
+        device,
+        pipeline_cache,
+        xx create_infos.count,
+        create_infos.data,
+        p_allocator,
+        pipelines.data,
+    );
+
+    return result, pipelines;
+}
+
 cmd_blit_image_2 :: (
     command_buffer: Command_Buffer,
     p_blit_image_info: *Blit_Image_Info_2,
@@ -1212,6 +1270,24 @@ allocate_descriptor_sets :: inline (
     );
 
     return result, sets;
+}
+
+allocate_descriptor_set :: inline (
+    device: Device,
+    p_allocate_info: *Descriptor_Set_Allocate_Info,
+) -> Result, Descriptor_Set {
+    set: Descriptor_Set = ---;
+
+    allocate_info := p_allocate_info.*;
+    allocate_info.descriptor_set_count = 1;
+
+    result := vkAllocateDescriptorSets(
+        device,
+        p_allocate_info,
+        *set,
+    );
+
+    return result, set;
 }
 
 create_image :: inline (
@@ -5705,6 +5781,15 @@ vkQueueSubmit2 :: (
     submit_count: u32,
     p_submits:    *Submit_Info_2,
     fence:        Fence
+) -> Result #foreign libvulkan;
+
+vkCreateComputePipelines :: (
+    device:            Device,
+    pipeline_cache:    Pipeline_Cache,
+    create_info_count: u32,
+    p_create_infos:    *Compute_Pipeline_Create_Info,
+    p_allocator:       *Allocation_Callbacks,
+    p_pipelines:       *Pipeline
 ) -> Result #foreign libvulkan;
 
 #import "Basic";
