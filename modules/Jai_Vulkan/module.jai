@@ -1214,6 +1214,24 @@ allocate_descriptor_sets :: inline (
     return result, sets;
 }
 
+allocate_descriptor_set :: inline (
+    device: Device,
+    p_allocate_info: *Descriptor_Set_Allocate_Info,
+) -> Result, Descriptor_Set {
+    set: Descriptor_Set = ---;
+
+    allocate_info := p_allocate_info.*;
+    allocate_info.descriptor_set_count = 1;
+
+    result := vkAllocateDescriptorSets(
+        device,
+        p_allocate_info,
+        *set,
+    );
+
+    return result, set;
+}
+
 create_image :: inline (
     device: Device,
     p_create_info: *Image_Create_Info,

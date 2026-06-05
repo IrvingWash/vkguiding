@@ -27,7 +27,12 @@ Renderer :: struct {
 
     frame_data: [FRAME_OVERLAP]Frame_Data;
 
-    draw_image:        Allocated_Image;
+    draw_image: Allocated_Image;
+
+    global_descriptor_pool: VK.Descriptor_Pool;
+
+    draw_image_descriptor_set: VK.Descriptor_Set;
+    draw_image_descriptor_set_layout: VK.Descriptor_Set_Layout;
 
     get_window_framebuffer_size: Get_Window_Framebuffer_Size;
 }
@@ -81,10 +86,17 @@ init :: (
     }
 
     renderer.draw_image = init_draw_image();
+
+    renderer.global_descriptor_pool,
+    renderer.draw_image_descriptor_set_layout,
+    renderer.draw_image_descriptor_set = init_descriptors();
 }
 
 deinit :: () {
     VK.device_wait_idle(renderer.device);
+
+    VK.destroy_descriptor_pool(renderer.device, renderer.global_descriptor_pool);
+    VK.destroy_descriptor_set_layout(renderer.device, renderer.draw_image_descriptor_set_layout);
 
     destroy_allocated_image(renderer.draw_image);
 
@@ -283,6 +295,67 @@ VALIDATION_LAYERS :: *u8.[
 DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
+
+init_descriptors :: () -> VK.Descriptor_Pool,
+    VK.Descriptor_Set_Layout,
+    VK.Descriptor_Set
+{
+    global_pool := create_descriptor_pool(
+        renderer.device,
+        .[
+            VK.Descriptor_Pool_Size.{
+                type             = VK.Descriptor_Type.STORAGE_IMAGE,
+                descriptor_count = 10,
+            },
+        ],
+        max_sets = 10,
+    );
+
+    draw_image_descriptor_set_layout := create_descriptor_set_layout(
+        renderer.device,
+        .[
+            VK.Descriptor_Set_Layout_Binding.{
+                binding          = 0,
+                descriptor_count = 1,
+                descriptor_type  = VK.Descriptor_Type.STORAGE_IMAGE,
+                stage_flags      = VK.Shader_Stage_Flags.COMPUTE,
+            },
+        ],
+        0,
+    );
+
+    draw_image_descriptor_set := allocate_descriptor_set(
+        renderer.device,
+        global_pool,
+        draw_image_descriptor_set_layout,
+    );
+
+    // Write data into the descriptor_set
+    {
+        descriptor_image_info := VK.Descriptor_Image_Info.{
+            image_view   = renderer.draw_image.view,
+            image_layout = VK.Image_Layout.GENERAL,
+        };
+
+        image_write := VK.Write_Descriptor_Set.{
+            dst_set          = draw_image_descriptor_set,
+            dst_binding      = 0,
+            descriptor_count = 1,
+            descriptor_type  = VK.Descriptor_Type.STORAGE_IMAGE,
+            p_image_info     = *descriptor_image_info,
+        };
+
+        VK.update_descriptor_sets(
+            renderer.device,
+            .[image_write],
+            .[],
+        );
+    }
+
+    return global_pool,
+        draw_image_descriptor_set_layout,
+        draw_image_descriptor_set;
+}
 
 draw_background :: (command_buffer: VK.Command_Buffer) {
     // Clear background
@@ -763,10 +836,6 @@ destroy_swapchain :: () {
     array_free(renderer.swapchain_images);
 
     VK.destroy_swapchain_khr(renderer.device, renderer.swapchain);
-}
-
-assert_result :: (result: VK.Result, message: string) {
-    assert(result == .SUCCESS, "%: %", message, result);
 }
 
 #import "Basic";
