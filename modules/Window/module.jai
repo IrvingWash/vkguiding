@@ -1,4 +1,6 @@
-Window :: GLFW.Window;
+Window    :: #type GLFW.Window;
+Key       :: #type GLFW.Key;
+Key_State :: #type GLFW.Key_State;
 
 create_window :: (width: u32, height: u32, $$title: string) -> *Window {
     GLFW.init();
@@ -49,6 +51,10 @@ get_window_framebuffer_size :: (window: *Window) -> width: u32, height: u32 {
     width, height := GLFW.get_framebuffer_size(window);
 
     return width, height;
+}
+
+get_key :: inline (window: *Window, key: Key) -> Key_State {
+    return GLFW.get_key(window, key);
 }
 
 

@@ -34,8 +34,8 @@ Renderer :: struct {
     draw_image_descriptor_set:        VK.Descriptor_Set;
     draw_image_descriptor_set_layout: VK.Descriptor_Set_Layout;
 
-    gradient_pipeline:        VK.Pipeline;
-    gradient_pipeline_layout: VK.Pipeline_Layout;
+    background_effects:              [..]Compute_Effect;
+    current_background_effect_index: int;
 
     get_window_framebuffer_size: Get_Window_Framebuffer_Size;
 }
@@ -94,15 +94,17 @@ init :: (
     renderer.draw_image_descriptor_set_layout,
     renderer.draw_image_descriptor_set = init_descriptors();
 
-    renderer.gradient_pipeline,
-    renderer.gradient_pipeline_layout = init_pipelines();
+    renderer.background_effects = init_pipelines();
 }
 
 deinit :: () {
     VK.device_wait_idle(renderer.device);
 
-    VK.destroy_pipeline_layout(renderer.device, renderer.gradient_pipeline_layout);
-    VK.destroy_pipeline(renderer.device, renderer.gradient_pipeline);
+    for be: renderer.background_effects {
+        VK.destroy_pipeline_layout(renderer.device, be.layout);
+        VK.destroy_pipeline(renderer.device, be.pipeline);
+    }
+    array_free(renderer.background_effects);
 
     VK.destroy_descriptor_pool(renderer.device, renderer.global_descriptor_pool);
     VK.destroy_descriptor_set_layout(renderer.device, renderer.draw_image_descriptor_set_layout);
@@ -125,6 +127,17 @@ deinit :: () {
     VK.destroy_surface_khr(renderer.instance, renderer.surface);
 
     VK.destroy_instance(renderer.instance);
+}
+
+set_background_effect :: (name: string) {
+    for be: renderer.background_effects {
+        if be.name == name {
+            renderer.current_background_effect_index = it_index;
+            return;
+        }
+    }
+
+    assert(false, "Background effect '%' does not exist", name);
 }
 
 draw :: () {
@@ -280,6 +293,15 @@ draw :: () {
 
 #scope_file
 
+Compute_Effect :: struct {
+    name: string;
+
+    pipeline:    VK.Pipeline;
+    layout: VK.Pipeline_Layout;
+
+    data: Compute_Push_Constants;
+}
+
 Compute_Push_Constants :: struct {
     data_1: Vector4;
     data_2: Vector4;
@@ -312,8 +334,10 @@ DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
 
-init_background_pipelines :: () -> VK.Pipeline, VK.Pipeline_Layout {
-    compute_layout: VK.Pipeline_Layout = ---;
+init_background_pipelines :: () -> [..]Compute_Effect {
+    effects: [..]Compute_Effect;
+
+    // Gradient
     {
         push_constant: VK.Push_Constant_Range = {
             stage_flags = VK.Shader_Stage_Flags.COMPUTE,
@@ -321,51 +345,114 @@ init_background_pipelines :: () -> VK.Pipeline, VK.Pipeline_Layout {
             size        = size_of(Compute_Push_Constants),
         };
 
-        compute_layout_info: VK.Pipeline_Layout_Create_Info = {
+        layout_info: VK.Pipeline_Layout_Create_Info = {
             set_layout_count          = 1,
             p_set_layouts             = *renderer.draw_image_descriptor_set_layout,
             push_constant_range_count = 1,
             p_push_constant_ranges    = *push_constant,
         };
 
-        result:, compute_layout = VK.create_pipeline_layout(
+        result, layout := VK.create_pipeline_layout(
             renderer.device,
-            *compute_layout_info,
+            *layout_info,
         );
         assert_result(result, "Failed to create pipeline layout");
-    }
 
-    compute_pipeline: VK.Pipeline = ---;
-    {
-        shader_module := create_shader_module("gradient_color.spv");
-        defer VK.destroy_shader_module(renderer.device, shader_module);
+        gradient_shader := create_shader_module("gradient_color.spv");
+        defer VK.destroy_shader_module(renderer.device, gradient_shader);
 
-        shader_stage_info := VK.Pipeline_Shader_Stage_Create_Info.{
-            stage = VK.Shader_Stage_Flags.COMPUTE,
-            module = shader_module,
+        shader_stage_info: VK.Pipeline_Shader_Stage_Create_Info = {
+            stage  = VK.Shader_Stage_Flags.COMPUTE,
+            module = gradient_shader,
             p_name = "main",
         };
 
-        pipeline_create_info := VK.Compute_Pipeline_Create_Info.{
-            stage = shader_stage_info,
-            layout = compute_layout,
+        pipeline_info: VK.Compute_Pipeline_Create_Info = {
+            layout = layout,
+            stage  = shader_stage_info,
         };
 
-        result:, compute_pipeline = VK.create_compute_pipeline(
+        result =, pipeline := VK.create_compute_pipeline(
             renderer.device,
             null,
-            *pipeline_create_info,
+            *pipeline_info
         );
-        assert_result(result, "Failed to create compute pipeline");
+        assert_result(result, "Failed to create pipeline");
+
+        array_add(
+            *effects,
+            Compute_Effect.{
+                name     = "gradient",
+                pipeline = pipeline,
+                layout   = layout,
+                data     = Compute_Push_Constants.{
+                    data_1 = { 1, 0, 0, 1 },
+                    data_2 = { 0, 0, 1, 1 },
+                },
+            },
+        );
     }
 
-    return compute_pipeline, compute_layout;
+    // Sky
+    {
+        push_constant: VK.Push_Constant_Range = {
+            stage_flags = VK.Shader_Stage_Flags.COMPUTE,
+            offset      = 0,
+            size        = size_of(Compute_Push_Constants),
+        };
+
+        layout_info: VK.Pipeline_Layout_Create_Info = {
+            set_layout_count          = 1,
+            p_set_layouts             = *renderer.draw_image_descriptor_set_layout,
+            push_constant_range_count = 1,
+            p_push_constant_ranges    = *push_constant,
+        };
+
+        result, layout := VK.create_pipeline_layout(
+            renderer.device,
+            *layout_info,
+        );
+        assert_result(result, "Failed to create pipeline layout");
+
+        sky_shader := create_shader_module("sky.spv");
+        defer VK.destroy_shader_module(renderer.device, sky_shader);
+
+        shader_stage_info: VK.Pipeline_Shader_Stage_Create_Info = {
+            stage  = VK.Shader_Stage_Flags.COMPUTE,
+            module = sky_shader,
+            p_name = "main",
+        };
+
+        pipeline_info: VK.Compute_Pipeline_Create_Info = {
+            layout = layout,
+            stage  = shader_stage_info,
+        };
+
+        result =, pipeline := VK.create_compute_pipeline(
+            renderer.device,
+            null,
+            *pipeline_info
+        );
+        assert_result(result, "Failed to create pipeline");
+
+        array_add(
+            *effects,
+            Compute_Effect.{
+                name = "sky",
+                pipeline = pipeline,
+                layout = layout,
+                data = {
+                    data_1 = { 0.1, 0.2, 0.4, 0.97 },
+                },
+            },
+        );
+    }
+
+    return effects;
 };
 
-init_pipelines :: () -> VK.Pipeline, VK.Pipeline_Layout {
-    pipeline, layout := init_background_pipelines();
-
-    return pipeline, layout;
+init_pipelines :: () -> [..]Compute_Effect {
+    return init_background_pipelines();
 }
 
 create_shader_module :: (name: string) -> VK.Shader_Module {
@@ -475,33 +562,30 @@ draw_background :: (command_buffer: VK.Command_Buffer) {
     //     .[clear_range],
     // );
 
+    background_effect := renderer.background_effects[renderer.current_background_effect_index];
+
     VK.cmd_bind_pipeline(
         command_buffer,
         VK.Pipeline_Bind_Point.COMPUTE,
-        renderer.gradient_pipeline,
+        background_effect.pipeline,
     );
 
     VK.cmd_bind_descriptor_sets(
         command_buffer,
         VK.Pipeline_Bind_Point.COMPUTE,
-        renderer.gradient_pipeline_layout,
+        background_effect.layout,
         0,
         .[renderer.draw_image_descriptor_set],
         .[],
     );
 
-    push_constant_data: Compute_Push_Constants = {
-        data_1 = {1, 0, 0, 1},
-        data_2 = {0, 0, 1, 1},
-    };
-
     VK.cmd_push_constants(
         command_buffer,
-        renderer.gradient_pipeline_layout,
+        background_effect.layout,
         VK.Shader_Stage_Flags.COMPUTE,
         0,
-        size_of(type_of(push_constant_data)),
-        *push_constant_data,
+        size_of(type_of(background_effect.data)),
+        *background_effect.data,
     );
 
     VK.cmd_dispatch(

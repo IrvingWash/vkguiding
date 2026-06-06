@@ -34,6 +34,13 @@ main :: () {
     while !Win.should_window_close(window) {
         Win.poll_window_events();
 
+        if Win.get_key(window, .ONE) == .PRESS {
+            R.set_background_effect("gradient");
+        }
+        if Win.get_key(window, .TWO) == .PRESS {
+            R.set_background_effect("sky");
+        }
+
         R.draw();
 
         reset_temporary_storage();

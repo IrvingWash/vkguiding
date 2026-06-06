@@ -41,6 +41,10 @@ SHADER_PATH_MAPS :: Shader_Path_Map.[
         source_path           = #run sprint("%/modules/Renderer/shaders/gradient_color.comp", #filepath),
         destination_file_name = "gradient_color.spv",
     },
+    {
+        source_path           = #run sprint("%/modules/Renderer/shaders/sky.comp", #filepath),
+        destination_file_name = "sky.spv",
+    },
 ];
 
 #import "Basic";
