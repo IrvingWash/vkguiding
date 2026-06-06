@@ -7,8 +7,14 @@
 #import "String";
 #import "BuildCpp";
 
-VULKAN_INCLUDE_PATH :: #run get_absolute_path("./vulkan-1.4.350.0/include");
-VMA_PATH            :: #run get_absolute_path("./vulkan-1.4.350.0/include/vma/vk_mem_alloc.h");
+#if OS == {
+    case .LINUX;
+        VULKAN_INCLUDE_PATH :: #run get_absolute_path("./vulkan-1.4.350.0/include");
+        VMA_PATH            :: #run get_absolute_path("./vulkan-1.4.350.0/include/vma/vk_mem_alloc.h");
+    case .WINDOWS;
+        VULKAN_INCLUDE_PATH :: #run get_absolute_path("./vulkan-1.4.350.0/Include");
+        VMA_PATH            :: #run get_absolute_path("./vulkan-1.4.350.0/Include/vma/vk_mem_alloc.h");
+}
 
 #run {
     set_build_options_dc({ do_output = false });
@@ -35,23 +41,44 @@ VMA_PATH            :: #run get_absolute_path("./vulkan-1.4.350.0/include/vma/vk
 build_vma :: () -> bool {
     make_directory_if_it_does_not_exist("./linux");
 
-    return build_cpp_dynamic_lib(
-        "linux/libvma",
-        VMA_PATH,
-        extra = .[
-            "-I",
-            VULKAN_INCLUDE_PATH,
-            "-DVMA_IMPLEMENTATION",
-            "-x",
-            "c++",
-            "-std=c++17",
-            "-lstdc++",
-            "-L./linux",
-            "-lvulkan",
-            "-fno-exceptions",
-            "-fno-rtti",
-        ],
-    );
+    #if OS == {
+        case .LINUX;
+            return build_cpp_dynamic_lib(
+                "linux/libvma",
+                VMA_PATH,
+                extra = .[
+                    "-I",
+                    VULKAN_INCLUDE_PATH,
+                    "-DVMA_IMPLEMENTATION",
+                    "-x",
+                    "c++",
+                    "-std=c++17",
+                    "-lstdc++",
+                    "-L./linux",
+                    "-lvulkan",
+                    "-fno-exceptions",
+                    "-fno-rtti",
+                ],
+            );
+        case .WINDOWS;
+            return build_cpp_dynamic_lib(
+                "windows/libvma",
+                VMA_PATH,
+                extra = .[
+                    "/I",
+                    VULKAN_INCLUDE_PATH,
+                    "/DVMA_IMPLEMENTATION",
+                    "/DVMA_CALL_PRE=__declspec(dllexport)",
+                    "/std:c++17",
+                    "/TP",
+                ],
+                library_files = .["windows/vulkan-1.lib"]
+            );
+        case;
+            assert("Unsupported OS: '%'", OS);
+    }
+
+    return false;
 }
 
 generate :: () -> error: string {
