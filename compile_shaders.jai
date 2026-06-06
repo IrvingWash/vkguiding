@@ -1,4 +1,4 @@
-compile_shaders :: (output_path_root: string) -> error: string #compile_time {
+compile_shaders :: (output_path_root: string, debug: bool) -> error: string #compile_time {
     output_path := sprint("%/%", output_path_root, COMPILED_SHADERS_ROOT);
 
     ok := make_directory_if_it_does_not_exist(output_path, recursive = true);
@@ -7,11 +7,23 @@ compile_shaders :: (output_path_root: string) -> error: string #compile_time {
     }
 
     for map: SHADER_PATH_MAPS {
-        result, output, error := run_command(
+        command: [..]string;
+        array_add(
+            *command,
             "glslc",
             map.source_path,
             "-o",
             sprint("%/%", output_path, map.destination_file_name),
+        );
+        if debug {
+            array_add(
+                *command,
+                "-g",
+            );
+        }
+
+        result, output, error := run_command(
+            ..command,
             capture_and_return_output = true,
         );
 

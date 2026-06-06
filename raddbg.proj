@@ -1,0 +1,10 @@
+// raddbg 0.9.26 project file
+
+name: vkguiding
+tab_width: 4
+target:
+{
+  executable: ".build/DEBUG/target.exe"
+  working_directory: "../vkguiding"
+  enabled: 1
+}

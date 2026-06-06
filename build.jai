@@ -39,7 +39,7 @@ Config :: struct {
     output_path := make_output_path(config);
 
     #if !#exists(JAILS_DIAGNOSTICS_BUILD) {
-        error = compile_shaders(output_path);
+        error = compile_shaders(output_path, config.optimization_type <= .VERY_DEBUG);
         if error {
             print("Failed to compile shaders: %", error, to_standard_error = true);
             return;
