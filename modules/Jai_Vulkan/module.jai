@@ -700,6 +700,8 @@ Offset_3D :: struct {
     x: s32;
     y: s32;
     z: s32;
+
+    #overlay(x) _2D: Offset_2D;
 }
 
 Offset_2D :: struct {
@@ -852,6 +854,8 @@ Extent_3D :: struct {
     width:  u32;
     height: u32;
     depth:  u32;
+
+    #overlay(width) _2D: Extent_2D;
 }
 
 Queue_Family_Properties :: struct {
@@ -2108,7 +2112,10 @@ cmd_draw_indexed :: (
     first_instance: u32,
 ) -> void #foreign libvulkan "vkCmdDrawIndexed";
 
-cmd_begin_rendering :: (command_buffer: Command_Buffer, p_rendering_info: *Rendering_Info) -> void #foreign libvulkan "vkCmdBeginRendering";
+cmd_begin_rendering :: (
+    command_buffer: Command_Buffer,
+    p_rendering_info: *Rendering_Info,
+) -> void #foreign libvulkan "vkCmdBeginRendering";
 
 begin_command_buffer :: (
     command_buffer: Command_Buffer,
