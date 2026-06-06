@@ -45,6 +45,14 @@ SHADER_PATH_MAPS :: Shader_Path_Map.[
         source_path           = #run sprint("%/modules/Renderer/shaders/sky.comp", #filepath),
         destination_file_name = "sky.spv",
     },
+    {
+        source_path           = #run sprint("%/modules/Renderer/shaders/colored_triangle.vert", #filepath),
+        destination_file_name = "colored_triangle.vert.spv",
+    },
+    {
+        source_path           = #run sprint("%/modules/Renderer/shaders/colored_triangle.frag", #filepath),
+        destination_file_name = "colored_triangle.frag.spv",
+    },
 ];
 
 #import "Basic";
