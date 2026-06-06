@@ -38,10 +38,12 @@ Config :: struct {
 
     output_path := make_output_path(config);
 
-    error = compile_shaders(output_path);
-    if error {
-        print("Failed to compile shaders: %", error, to_standard_error = true);
-        return;
+    #if !#exists(JAILS_DIAGNOSTICS_BUILD) {
+        error = compile_shaders(output_path);
+        if error {
+            print("Failed to compile shaders: %", error, to_standard_error = true);
+            return;
+        }
     }
 
     error = build(build_options_dc, config, output_path);
