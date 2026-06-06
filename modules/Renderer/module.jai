@@ -37,6 +37,9 @@ Renderer :: struct {
     background_effects:              [..]Compute_Effect;
     current_background_effect_index: int;
 
+    triangle_pipeline:        VK.Pipeline;
+    triangle_pipeline_layout: VK.Pipeline_Layout;
+
     get_window_framebuffer_size: Get_Window_Framebuffer_Size;
 }
 
@@ -94,11 +97,17 @@ init :: (
     renderer.draw_image_descriptor_set_layout,
     renderer.draw_image_descriptor_set = init_descriptors();
 
-    renderer.background_effects = init_pipelines();
+    renderer.background_effects = init_background_pipelines();
+
+    renderer.triangle_pipeline,
+    renderer.triangle_pipeline_layout = init_triangle_pipeline();
 }
 
 deinit :: () {
     VK.device_wait_idle(renderer.device);
+
+    VK.destroy_pipeline_layout(renderer.device, renderer.triangle_pipeline_layout);
+    VK.destroy_pipeline(renderer.device, renderer.triangle_pipeline);
 
     for be: renderer.background_effects {
         VK.destroy_pipeline_layout(renderer.device, be.layout);
@@ -186,7 +195,7 @@ draw :: () {
         assert_result(result, "Failed to begin command buffer");
     }
 
-    // Transition draw image to be suitable for drawing
+    // Transition draw image to be suitable for writing
     transition_image(
         frame_datalet.command_buffer,
         renderer.draw_image.image,
@@ -197,11 +206,22 @@ draw :: () {
 
     draw_background(frame_datalet.command_buffer);
 
-    // Transition draw image and swapchain image to transfer layout
+    // Transition draw image to be suitable for graphics pipeline
     transition_image(
         frame_datalet.command_buffer,
         renderer.draw_image.image,
         VK.Image_Layout.GENERAL,
+        VK.Image_Layout.COLOR_ATTACHMENT_OPTIMAL,
+        VK.Image_Aspect_Flags.COLOR,
+    );
+
+    draw_geometry(frame_datalet.command_buffer);
+
+    // Transition draw image and swapchain image to transfer layout
+    transition_image(
+        frame_datalet.command_buffer,
+        renderer.draw_image.image,
+        VK.Image_Layout.COLOR_ATTACHMENT_OPTIMAL,
         VK.Image_Layout.TRANSFER_SRC_OPTIMAL,
         VK.Image_Aspect_Flags.COLOR,
     );
@@ -218,10 +238,7 @@ draw :: () {
         frame_datalet.command_buffer,
         renderer.draw_image.image,
         renderer.swapchain_images[swapchain_image_index],
-        VK.Extent_2D.{
-            renderer.draw_image.extent.width,
-            renderer.draw_image.extent.height
-        },
+        renderer.draw_image.extent._2D,
         renderer.swapchain_info.image_extent,
     );
 
@@ -333,6 +350,88 @@ VALIDATION_LAYERS :: *u8.[
 DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
+
+draw_geometry :: (command_buffer: VK.Command_Buffer) {
+    color_attachment := VK.Rendering_Attachment_Info.{
+        image_view   = renderer.draw_image.view,
+        image_layout = VK.Image_Layout.COLOR_ATTACHMENT_OPTIMAL,
+        load_op      = VK.Attachment_Load_Op.DONT_CARE,
+        store_op     = VK.Attachment_Store_Op.STORE,
+    };
+
+    rendering_info := VK.Rendering_Info.{
+        render_area = VK.Rect_2D.{
+            offset = VK.Offset_2D.{},
+            extent = renderer.draw_image.extent._2D,
+        },
+        layer_count = 1,
+        color_attachment_count = 1,
+        p_color_attachments    = *color_attachment,
+    };
+
+    VK.cmd_begin_rendering(command_buffer, *rendering_info);
+
+    VK.cmd_bind_pipeline(command_buffer, VK.Pipeline_Bind_Point.GRAPHICS, renderer.triangle_pipeline);
+
+    VK.cmd_set_viewport(
+        command_buffer,
+        .[
+            VK.Viewport.{
+                width     = cast(float, renderer.draw_image.extent.width),
+                height    = cast(float, renderer.draw_image.extent.height),
+                min_depth = 0,
+                max_depth = 1,
+            },
+        ],
+    );
+
+    VK.cmd_set_scissor(
+        command_buffer,
+        .[
+            VK.Rect_2D.{
+                extent = renderer.draw_image.extent._2D,
+            },
+        ],
+    );
+
+    VK.cmd_draw(command_buffer, 3, 1, 0, 0);
+
+    VK.cmd_end_rendering(command_buffer);
+}
+
+init_triangle_pipeline :: () -> VK.Pipeline, VK.Pipeline_Layout {
+    vertex_shader   := create_shader_module("colored_triangle.vert.spv");
+    fragment_shader := create_shader_module("colored_triangle.frag.spv");
+    defer VK.destroy_shader_module(renderer.device, vertex_shader);
+    defer VK.destroy_shader_module(renderer.device, fragment_shader);
+
+    pipeline_layout: VK.Pipeline_Layout;
+    {
+        pipeline_layout_info: VK.Pipeline_Layout_Create_Info;
+        result:, pipeline_layout = VK.create_pipeline_layout(
+            renderer.device,
+            *pipeline_layout_info,
+        );
+        assert_result(result, "Failed to create pipeline layout");
+    }
+
+    builder: Pipeline_Builder = {
+        pipeline_layout = pipeline_layout,
+    };
+
+    builder.set_shaders(*builder, vertex_shader, fragment_shader);
+    builder.set_input_topology(*builder, VK.Primitive_Topology.TRIANGLE_LIST);
+    builder.set_polygon_mode(*builder, VK.Polygon_Mode.FILL);
+    builder.set_cull_mode(*builder, VK.Cull_Mode_Flags.NONE, VK.Front_Face.CLOCKWISE);
+    builder.set_multisampling_none(*builder);
+    builder.disable_blending(*builder);
+    builder.disable_depth_test(*builder);
+    builder.set_color_attachment_format(*builder, renderer.draw_image.format);
+    builder.set_depth_format(*builder, VK.Format.UNDEFINED);
+    pipeline := builder.build(*builder, renderer.device);
+
+    return pipeline, pipeline_layout;
+}
 
 init_background_pipelines :: () -> [..]Compute_Effect {
     effects: [..]Compute_Effect;
@@ -450,10 +549,6 @@ init_background_pipelines :: () -> [..]Compute_Effect {
 
     return effects;
 };
-
-init_pipelines :: () -> [..]Compute_Effect {
-    return init_background_pipelines();
-}
 
 create_shader_module :: (name: string) -> VK.Shader_Module {
     File   :: #import "File";
