@@ -88,7 +88,7 @@ init :: (
         };
 
         result:, renderer.allocator = VMA.create_allocator(*allocator_info);
-        assert_result(result, "Failed to create allocator");
+        assert_result("Failed to create allocator");
     }
 
     renderer.draw_image = init_draw_image();
@@ -161,12 +161,12 @@ draw :: () {
             frame_datalet.render_fence,
             SECOND_IN_NANO,
         );
-        assert_result(result, "Failed to wait for render fence");
+        assert_result("Failed to wait for render fence");
         result = VK.reset_fence(
             renderer.device,
             frame_datalet.render_fence,
         );
-        assert_result(result, "Failed to reset render fence");
+        assert_result("Failed to reset render fence");
     }
     VK.reset_command_buffer(frame_datalet.command_buffer, 0);
 
@@ -192,7 +192,7 @@ draw :: () {
             frame_datalet.command_buffer,
             *begin_info,
         );
-        assert_result(result, "Failed to begin command buffer");
+        assert_result("Failed to begin command buffer");
     }
 
     // Transition draw image to be suitable for writing
@@ -254,7 +254,7 @@ draw :: () {
     // End command buffer (it's unrecordable after this)
     {
         result := VK.end_command_buffer(frame_datalet.command_buffer);
-        assert_result(result, "Failed to end command buffer");
+        assert_result("Failed to end command buffer");
     }
 
     // Submitting
@@ -288,7 +288,7 @@ draw :: () {
             .[submit_info],
             frame_datalet.render_fence,
         );
-        assert_result(result, "Failed to submit queue");
+        assert_result("Failed to submit queue");
     }
 
     // Presenting
@@ -302,7 +302,7 @@ draw :: () {
         };
 
         result := VK.queue_present_khr(renderer.graphics_queue, *present_info);
-        assert_result(result, "Failed to present queue");
+        assert_result("Failed to present queue");
     }
 }
 
@@ -412,7 +412,7 @@ init_triangle_pipeline :: () -> VK.Pipeline, VK.Pipeline_Layout {
             renderer.device,
             *pipeline_layout_info,
         );
-        assert_result(result, "Failed to create pipeline layout");
+        assert_result("Failed to create pipeline layout");
     }
 
     builder: Pipeline_Builder = {
@@ -455,7 +455,7 @@ init_background_pipelines :: () -> [..]Compute_Effect {
             renderer.device,
             *layout_info,
         );
-        assert_result(result, "Failed to create pipeline layout");
+        assert_result("Failed to create pipeline layout");
 
         gradient_shader := create_shader_module("gradient_color.spv");
         defer VK.destroy_shader_module(renderer.device, gradient_shader);
@@ -476,7 +476,7 @@ init_background_pipelines :: () -> [..]Compute_Effect {
             null,
             *pipeline_info
         );
-        assert_result(result, "Failed to create pipeline");
+        assert_result("Failed to create pipeline");
 
         array_add(
             *effects,
@@ -511,7 +511,7 @@ init_background_pipelines :: () -> [..]Compute_Effect {
             renderer.device,
             *layout_info,
         );
-        assert_result(result, "Failed to create pipeline layout");
+        assert_result("Failed to create pipeline layout");
 
         sky_shader := create_shader_module("sky.spv");
         defer VK.destroy_shader_module(renderer.device, sky_shader);
@@ -532,7 +532,7 @@ init_background_pipelines :: () -> [..]Compute_Effect {
             null,
             *pipeline_info
         );
-        assert_result(result, "Failed to create pipeline");
+        assert_result("Failed to create pipeline");
 
         array_add(
             *effects,
@@ -571,7 +571,7 @@ create_shader_module :: (name: string) -> VK.Shader_Module {
     };
 
     result, module := VK.create_shader_module(renderer.device, *shader_module_info);
-    assert_result(result, "Failed to create shader module");
+    assert_result("Failed to create shader module");
 
     return module;
 };
@@ -770,7 +770,7 @@ init_draw_image :: () -> Allocated_Image {
             *image_allocation_create_info,
             null,
         );
-        assert_result(result, "Failed to create image");
+        assert_result("Failed to create image");
     }
 
     // Image View
@@ -789,7 +789,7 @@ init_draw_image :: () -> Allocated_Image {
         };
 
         result:, allocated_image.view = VK.create_image_view(renderer.device, *image_view_create_info);
-        assert_result(result, "Failed to create image view");
+        assert_result("Failed to create image view");
     }
 
     return allocated_image;
@@ -877,7 +877,7 @@ init_vulkan :: (
         };
 
         result:, instance = VK.create_instance(*instance_info);
-        assert_result(result, "Failed to create instance");
+        assert_result("Failed to create instance");
     }
 
     // =========================================================================
@@ -886,7 +886,7 @@ init_vulkan :: (
     surface: VK.Surface_KHR = ---;
     {
         result:, surface = create_window_surface(instance, renderer.window);
-        assert_result(result, "Failed to create surface");
+        assert_result("Failed to create surface");
     }
 
     // =========================================================================
@@ -896,7 +896,7 @@ init_vulkan :: (
     graphics_qf_index: u32                = ---;
     {
         result, all_physical_devices := VK.enumerate_physical_devices(instance);
-        assert_result(result, "Failed to enumerate phyisical devices");
+        assert_result("Failed to enumerate phyisical devices");
         defer array_free(all_physical_devices);
 
         found: bool;
@@ -922,7 +922,7 @@ init_vulkan :: (
                         xx it_index,
                         surface,
                     );
-                    assert_result(result, "Failed to get physical device surface support");
+                    assert_result("Failed to get physical device surface support");
 
                     if (
                         (qfp.queue_flags & VK.Queue_Flags.GRAPHICS)
@@ -995,7 +995,7 @@ init_vulkan :: (
         };
 
         result:, device = VK.create_device(physical_device, *device_info);
-        assert_result(result, "Failed to create device");
+        assert_result("Failed to create device");
     }
 
     return instance,
@@ -1017,7 +1017,7 @@ init_swapchain :: () -> VK.Swapchain_KHR,
             renderer.physical_device,
             renderer.surface,
         );
-        assert_result(result, "Failed to get surface capabilities");
+        assert_result("Failed to get surface capabilities");
 
         width, height := renderer.get_window_framebuffer_size(renderer.window);
 
@@ -1047,11 +1047,11 @@ init_swapchain :: () -> VK.Swapchain_KHR,
             renderer.device,
             *swapchain_info,
         );
-        assert_result(result, "Failed to create swapchain");
+        assert_result("Failed to create swapchain");
     }
 
     result, images := VK.get_swapchain_images_khr(renderer.device, swapchain);
-    assert_result(result, "Failed to get swapchain images");
+    assert_result("Failed to get swapchain images");
 
     image_views: [..]VK.Image_View;
     {
@@ -1076,7 +1076,7 @@ init_swapchain :: () -> VK.Swapchain_KHR,
                 renderer.device,
                 *image_view_info,
             );
-            assert_result(result, "Failed to create image view");
+            assert_result("Failed to create image view");
 
             image_views[it_index] = image_view;
         }
@@ -1101,7 +1101,7 @@ init_commands :: () {
             renderer.device,
             *command_pool_info,
         );
-        assert_result(result, "Failed to create command pool");
+        assert_result("Failed to create command pool");
 
         command_buffer_info.command_pool = command_pool;
 
@@ -1109,7 +1109,7 @@ init_commands :: () {
             renderer.device,
             *command_buffer_info,
         );
-        assert_result(result, "Failed to allocate command boofer");
+        assert_result("Failed to allocate command boofer");
 
         frame_datalet.command_pool   = command_pool;
         frame_datalet.command_buffer = command_buffer;
@@ -1124,12 +1124,12 @@ init_sync_structures :: () {
 
     for *frame_datalet: renderer.frame_data {
         result, render_fence := VK.create_fence(renderer.device, *fence_info);
-        assert_result(result, "Failed to create fence");
+        assert_result("Failed to create fence");
 
         result =, swapchain_semaphore := VK.create_semaphore(renderer.device, *semaphore_info);
-        assert_result(result, "Failed to create semaphore");
+        assert_result("Failed to create semaphore");
         result =, render_semaphore := VK.create_semaphore(renderer.device, *semaphore_info);
-        assert_result(result, "Failed to create semaphore");
+        assert_result("Failed to create semaphore");
 
         frame_datalet.render_fence        = render_fence;
         frame_datalet.render_semaphore    = render_semaphore;

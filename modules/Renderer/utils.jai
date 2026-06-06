@@ -65,7 +65,7 @@ Pipeline_Builder :: struct {
             null,
             *pipeline_info
         );
-        assert_result(result, "Failed to create graphics pipeline");
+        assert_result("Failed to create graphics pipeline");
 
         builder.destroy(builder);
 
@@ -186,8 +186,8 @@ Pipeline_Builder :: struct {
     }
 }
 
-assert_result :: (result: VK.Result, message: string) {
-    assert(result == .SUCCESS, "%: %", message, result);
+assert_result :: (message: string) #expand {
+    assert(`result == .SUCCESS, "%: %", message, `result);
 }
 
 create_descriptor_set_layout :: (
@@ -202,7 +202,7 @@ create_descriptor_set_layout :: (
     };
 
     result, set_layout := VK.create_descriptor_set_layout(device, *create_info);
-    assert_result(result, "Failed to create descriptor_set_layout");
+    assert_result("Failed to create descriptor_set_layout");
 
     return set_layout;
 }
@@ -219,7 +219,7 @@ allocate_descriptor_set :: (
     };
 
     result, set := VK.allocate_descriptor_set(device, *allocate_info);
-    assert_result(result, "Failed to allocate descriptor set");
+    assert_result("Failed to allocate descriptor set");
 
     return set;
 }
@@ -246,7 +246,7 @@ create_descriptor_pool :: (
     };
 
     result, pool := VK.create_descriptor_pool(device, *create_info);
-    assert_result(result, "Failed to create descriptor pool");
+    assert_result("Failed to create descriptor pool");
 
     return pool;
 }
