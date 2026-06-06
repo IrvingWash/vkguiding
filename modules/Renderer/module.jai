@@ -280,6 +280,13 @@ draw :: () {
 
 #scope_file
 
+Compute_Push_Constants :: struct {
+    data_1: Vector4;
+    data_2: Vector4;
+    data_3: Vector4;
+    data_4: Vector4;
+}
+
 Frame_Data :: struct {
     command_pool:   VK.Command_Pool;
     command_buffer: VK.Command_Buffer;
@@ -308,9 +315,17 @@ DEVICE_EXTENSIONS :: *u8.[
 init_background_pipelines :: () -> VK.Pipeline, VK.Pipeline_Layout {
     compute_layout: VK.Pipeline_Layout = ---;
     {
-        compute_layout_info := VK.Pipeline_Layout_Create_Info.{
-            set_layout_count = 1,
-            p_set_layouts    = *renderer.draw_image_descriptor_set_layout,
+        push_constant: VK.Push_Constant_Range = {
+            stage_flags = VK.Shader_Stage_Flags.COMPUTE,
+            offset      = 0,
+            size        = size_of(Compute_Push_Constants),
+        };
+
+        compute_layout_info: VK.Pipeline_Layout_Create_Info = {
+            set_layout_count          = 1,
+            p_set_layouts             = *renderer.draw_image_descriptor_set_layout,
+            push_constant_range_count = 1,
+            p_push_constant_ranges    = *push_constant,
         };
 
         result:, compute_layout = VK.create_pipeline_layout(
@@ -322,7 +337,7 @@ init_background_pipelines :: () -> VK.Pipeline, VK.Pipeline_Layout {
 
     compute_pipeline: VK.Pipeline = ---;
     {
-        shader_module := create_shader_module("gradient.spv");
+        shader_module := create_shader_module("gradient_color.spv");
         defer VK.destroy_shader_module(renderer.device, shader_module);
 
         shader_stage_info := VK.Pipeline_Shader_Stage_Create_Info.{
@@ -473,6 +488,20 @@ draw_background :: (command_buffer: VK.Command_Buffer) {
         0,
         .[renderer.draw_image_descriptor_set],
         .[],
+    );
+
+    push_constant_data: Compute_Push_Constants = {
+        data_1 = {1, 0, 0, 1},
+        data_2 = {0, 0, 1, 1},
+    };
+
+    VK.cmd_push_constants(
+        command_buffer,
+        renderer.gradient_pipeline_layout,
+        VK.Shader_Stage_Flags.COMPUTE,
+        0,
+        size_of(type_of(push_constant_data)),
+        *push_constant_data,
     );
 
     VK.cmd_dispatch(

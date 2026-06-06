@@ -1171,6 +1171,15 @@ Swapchain_Create_Info_KHR :: struct {
 // Procedures
 // =========================================================================
 
+cmd_push_constants :: (
+    command_buffer: Command_Buffer,
+    layout:         Pipeline_Layout,
+    stage_flags:    Shader_Stage_Flags,
+    offset:         u32,
+    size:           u32,
+    p_values:       *void,
+) -> void #foreign libvulkan "vkCmdPushConstants";
+
 cmd_dispatch :: (
     cnmmand_buffer: Command_Buffer,
     group_count_x:  u32,

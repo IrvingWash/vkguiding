@@ -34,9 +34,13 @@ COMPILED_SHADERS_ROOT :: "shaders";
 
 SHADER_PATH_MAPS :: Shader_Path_Map.[
     {
-        source_path           = #run sprint("%/modules/Renderer/gradient.comp", #filepath),
+        source_path           = #run sprint("%/modules/Renderer/shaders/gradient.comp", #filepath),
         destination_file_name = "gradient.spv",
-    }
+    },
+    {
+        source_path           = #run sprint("%/modules/Renderer/shaders/gradient_color.comp", #filepath),
+        destination_file_name = "gradient_color.spv",
+    },
 ];
 
 #import "Basic";
