@@ -2,18 +2,15 @@
 #import "Compiler";
 #import "File_Utilities";
 #import "Process";
-#import "File";
 
-TOOLS_ABSOLUTE_PATH :: #run get_absolute_path("tools");
+TOOLS_ABSOLUTE_PATH :: #run sprint("%tools", #filepath);
 
-HOOKS_SOURCE_ABSOLUTE_PATH      :: #run get_absolute_path(
-    tprint("%/hooks", TOOLS_ABSOLUTE_PATH)
-);
-HOOKS_DESTINATION_ABSOLUTE_PATH :: #run get_absolute_path(".git/hooks");
+HOOKS_SOURCE_ABSOLUTE_PATH      :: #run sprint("%/hooks", TOOLS_ABSOLUTE_PATH);
+HOOKS_DESTINATION_ABSOLUTE_PATH :: #run sprint("%.git/hooks", #filepath);
 
-#run {
+#run,stallable {
     set_build_options_dc(.{
-        do_output = false,
+        do_output           = false,
         write_added_strings = false,
     });
 

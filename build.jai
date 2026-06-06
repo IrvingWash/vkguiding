@@ -59,7 +59,7 @@ build :: (build_options_dc: Build_Options, config: Config, output_path: string) 
 
     workspace := compiler_create_workspace("vkguiding");
 
-    ENTRY_FILE_PATH :: "source/main.jai";
+    ENTRY_FILE_PATH :: #run tprint("%source/main.jai", #filepath);
     EXECUTABLE_NAME :: "target";
 
     {
@@ -211,7 +211,7 @@ create_config :: (arguments: []string) -> error: string, Config {
 }
 
 make_output_path :: (config: Config) -> string {
-    OUTPUT_PATH_WILDCARD :: ".build/%";
+    OUTPUT_PATH :: #run tprint("%.build", #filepath);
 
-    return tprint(OUTPUT_PATH_WILDCARD, config.optimization_type);
+    return tprint("%/%", OUTPUT_PATH, config.optimization_type);
 }
