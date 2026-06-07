@@ -6,11 +6,10 @@ layout(location = 0) out vec3 outColor;
 layout(location = 1) out vec2 outUV;
 
 struct Vertex {
-    vec3  position;
-    float uv_x;
-    vec3  normal;
-    float uv_y;
-    vec4  color;
+    vec3 position;
+    vec3 normal;
+    vec4 color;
+    vec2 uv;
 };
 
 layout(buffer_reference, std430) readonly buffer VertexBuffer{
@@ -28,6 +27,5 @@ void main() {
     gl_Position = PushConstants.render_matrix * vec4(v.position, 1);
 
     outColor = v.color.xyz;
-    outUV.x  = v.uv_x;
-    outUV.y  = v.uv_y;
+    outUV    = v.uv;
 }

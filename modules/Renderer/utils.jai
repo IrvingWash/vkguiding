@@ -1,11 +1,10 @@
 #scope_module
 
 Vertex :: struct {
-    position: Vector3;
-    uv_x:     float;
-    normal:   Vector3;
-    uv_y:     float;
-    color:    Vector4;
+    position: Vector3 #align(16);
+    normal:   Vector3 #align(16);
+    color:    Vector4 #align(16);
+    uv:       Vector2 #align(16);
 }
 
 Gpu_Mesh_Buffers :: struct {
