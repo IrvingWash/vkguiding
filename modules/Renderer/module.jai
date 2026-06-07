@@ -25,6 +25,10 @@ Renderer :: struct {
     swapchain_images:      [..]VK.Image;
     swapchain_image_views: [..]VK.Image_View;
 
+    immediate_fence:          VK.Fence;
+    immediate_command_buffer: VK.Command_Buffer;
+    immediate_command_pool:   VK.Command_Pool;
+
     frame_data: [FRAME_OVERLAP]Frame_Data;
 
     draw_image: Allocated_Image;
@@ -121,6 +125,9 @@ deinit :: () {
     destroy_allocated_image(renderer.draw_image);
 
     VMA.destroy_allocator(renderer.allocator);
+
+    VK.destroy_fence(renderer.device, renderer.immediate_fence);
+    VK.destroy_command_pool(renderer.device, renderer.immediate_command_pool);
 
     for frame_datalet: renderer.frame_data {
         VK.destroy_semaphore(renderer.device, frame_datalet.swapchain_semaphore);
@@ -1096,6 +1103,7 @@ init_commands :: () {
         command_buffer_count = 1,
     };
 
+    // Main commands, per image
     for *frame_datalet: renderer.frame_data {
         result, command_pool := VK.create_command_pool(
             renderer.device,
@@ -1114,6 +1122,15 @@ init_commands :: () {
         frame_datalet.command_pool   = command_pool;
         frame_datalet.command_buffer = command_buffer;
     }
+
+    // Immediate commands
+    result:, renderer.immediate_command_pool = VK.create_command_pool(renderer.device, *command_pool_info);
+    assert_result("Failed to create immediate command pool");
+
+    command_buffer_info.command_pool = renderer.immediate_command_pool;
+
+    result, renderer.immediate_command_buffer = VK.allocate_command_buffer(renderer.device, *command_buffer_info);
+    assert_result("Failed to create immediate command buffer");
 }
 
 init_sync_structures :: () {
@@ -1122,6 +1139,7 @@ init_sync_structures :: () {
         flags = VK.Fence_Create_Flags.SIGNALED,
     };
 
+    // Main fences and semaphores, per image
     for *frame_datalet: renderer.frame_data {
         result, render_fence := VK.create_fence(renderer.device, *fence_info);
         assert_result("Failed to create fence");
@@ -1135,6 +1153,10 @@ init_sync_structures :: () {
         frame_datalet.render_semaphore    = render_semaphore;
         frame_datalet.swapchain_semaphore = swapchain_semaphore;
     }
+
+    // Immediate fence
+    result:, renderer.immediate_fence = VK.create_fence(renderer.device, *fence_info);
+    assert_result("Failed to create immediate fence");
 }
 
 destroy_swapchain :: () {

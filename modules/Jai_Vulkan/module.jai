@@ -17,7 +17,8 @@ Bool :: #type u32;
 TRUE:  Bool : 1;
 FALSE: Bool : 0;
 
-Device_Size :: u64;
+Device_Size    :: u64;
+Device_Address :: u64;
 
 Instance              :: #type *void;
 Surface_KHR           :: #type *void;
@@ -83,6 +84,12 @@ PFN_Free_Function :: #type (
 // =========================================================================
 // Structs
 // =========================================================================
+
+Buffer_Device_Address_Info :: struct {
+    s_type  := Structure_Type.BUFFER_DEVICE_ADDRESS_INFO;
+    p_next: *void;
+    buffer: Buffer;
+}
 
 Compute_Pipeline_Create_Info :: struct {
     s_type :=             Structure_Type.COMPUTE_PIPELINE_CREATE_INFO;
@@ -1174,6 +1181,11 @@ Swapchain_Create_Info_KHR :: struct {
 // =========================================================================
 // Procedures
 // =========================================================================
+
+get_buffer_device_address :: (
+    device: Device,
+    p_info: *Buffer_Device_Address_Info
+) -> Device_Address #foreign libvulkan "vkGetBufferDeviceAddress";
 
 cmd_push_constants :: (
     command_buffer: Command_Buffer,

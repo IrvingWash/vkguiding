@@ -154,6 +154,35 @@ Allocator_Create_Flags :: enum_flags u32 {
 // Procedures
 // =============================================================================
 
+destroy_buffer :: (
+    allocator:  Allocator,
+    buffer:     Buffer,
+    allocation: Allocation,
+) -> void #foreign libvma "vmaDestroyBuffer";
+
+create_buffer :: inline (
+    allocator:                Allocator,
+    p_buffer_create_info:     Buffer_Create_Info,
+    p_allocation_create_info: *Allocation_Create_Info,
+) -> Result,
+    Buffer,
+    Allocation,
+    Allocation_Info
+{
+    buffer:          Buffer;
+    allocation:      Allocation;
+    allocation_info: Allocation_Info;
+
+    result := vkCreateBuffer(
+        allocator,
+        p_buffer_create_info,
+        p_allocation_create_info,
+        *buffer,
+    );
+
+    return result, buffer, allocation, allocation_info;
+}
+
 destroy_image :: (
     allocator:  Allocator,
     image:      Image,
@@ -220,6 +249,15 @@ vmaCreateImage :: (
     p_image_create_info:      *Image_Create_Info,
     p_allocation_create_info: *Allocation_Create_Info,
     p_image:                  *Image,
+    p_allocation:             *Allocation,
+    p_allocation_info:        *Allocation_Info,
+) -> Result #foreign libvma;
+
+vmaCreateBuffer :: (
+    allocator:                Allocator,
+    p_buffer_create_info:     *Buffer_Create_Info,
+    p_allocation_create_info: *Allocation_Create_Info,
+    p_buffer:                 *Buffer,
     p_allocation:             *Allocation,
     p_allocation_info:        *Allocation_Info,
 ) -> Result #foreign libvma;
