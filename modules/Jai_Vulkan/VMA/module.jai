@@ -233,6 +233,8 @@ destroy_allocator :: (
 #if OS == {
     case .LINUX;
         libvma :: #library "../linux/libvma";
+    case .WINDOWS;
+        libvma :: #library "../windows/libvma";
     case;
         assert(false, "Unsupported OS: %", OS);
 }

@@ -39,7 +39,7 @@ Config :: struct {
     output_path := make_output_path(config);
 
     #if !#exists(JAILS_DIAGNOSTICS_BUILD) {
-        error = compile_shaders(output_path);
+        error = compile_shaders(output_path, config.optimization_type <= .VERY_DEBUG);
         if error {
             print("Failed to compile shaders: %", error, to_standard_error = true);
             return;
@@ -64,8 +64,8 @@ build :: (build_options_dc: Build_Options, config: Config, output_path: string) 
     ENTRY_FILE_PATH :: #run tprint("%source/main.jai", #filepath);
     EXECUTABLE_NAME :: "target";
 
+    build_options := get_build_options(workspace);
     {
-        build_options := get_build_options(workspace);
         copy_commonly_propagated_fields(build_options_dc, *build_options);
 
         #if #exists(JAILS_DIAGNOSTICS_BUILD) {
@@ -86,6 +86,11 @@ build :: (build_options_dc: Build_Options, config: Config, output_path: string) 
     ok := make_directory_if_it_does_not_exist(output_path, recursive = true);
     if !ok {
         return "Failed to create build directory";
+    }
+
+    copy_ok := copy_dependencies(build_options.output_path);
+    if !copy_ok {
+        return "Failed to copy dependencies";
     }
 
     plugins: [..]*Metaprogram_Plugin;
@@ -216,4 +221,20 @@ make_output_path :: (config: Config) -> string {
     OUTPUT_PATH :: #run tprint("%.build", #filepath);
 
     return tprint("%/%", OUTPUT_PATH, config.optimization_type);
+}
+
+copy_dependencies :: (output_path: string) -> bool {
+    #if OS == {
+        case .WINDOWS;
+            // This is super janky stuff.
+            // I don't know why we need to do this and, honestly, don't care that much.
+            return copy_file(
+                tprint("%modules/Jai_Vulkan/windows/libvma.dll", #filepath),
+                tprint("%/libvma.dll", output_path),
+        );
+        case;
+            return true;
+    }
+
+    return true;
 }
