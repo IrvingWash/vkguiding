@@ -62,7 +62,7 @@ Allocator_Create_Info :: struct {
     p_allocation_callbacks:              *Allocation_Callbacks;
     pDeviceMemoryCallbacks:              *Device_Memory_Callbacks;
     p_heap_size_limit:                   *Device_Size;
-    p_vulkan_functions:                  *void; // @Todo
+    p_vulkan_functions:                  *void; // @Todo: This is not an opaque struct. But it's huge and requires defining things not only here, but in Vulkan's bindings as well.
     instance:                            Instance;
     vulkan_api_version:                  u32;
     p_type_external_memory_handle_types: *External_Memory_Handle_Type_Flags_KHR;
@@ -162,7 +162,7 @@ destroy_buffer :: (
 
 create_buffer :: inline (
     allocator:                Allocator,
-    p_buffer_create_info:     Buffer_Create_Info,
+    p_buffer_create_info:     *Buffer_Create_Info,
     p_allocation_create_info: *Allocation_Create_Info,
 ) -> Result,
     Buffer,
@@ -173,11 +173,13 @@ create_buffer :: inline (
     allocation:      Allocation;
     allocation_info: Allocation_Info;
 
-    result := vkCreateBuffer(
+    result := vmaCreateBuffer(
         allocator,
         p_buffer_create_info,
         p_allocation_create_info,
         *buffer,
+        *allocation,
+        *allocation_info,
     );
 
     return result, buffer, allocation, allocation_info;

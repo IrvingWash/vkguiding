@@ -53,6 +53,10 @@ SHADER_PATH_MAPS :: Shader_Path_Map.[
         source_path           = #run sprint("%/modules/Renderer/shaders/colored_triangle.frag", #filepath),
         destination_file_name = "colored_triangle.frag.spv",
     },
+    {
+        source_path           = #run sprint("%/modules/Renderer/shaders/colored_triangle_mesh.vert", #filepath),
+        destination_file_name = "colored_triangle_mesh.vert.spv",
+    },
 ];
 
 #import "Basic";

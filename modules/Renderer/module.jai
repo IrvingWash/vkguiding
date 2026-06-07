@@ -44,6 +44,11 @@ Renderer :: struct {
     triangle_pipeline:        VK.Pipeline;
     triangle_pipeline_layout: VK.Pipeline_Layout;
 
+    mesh_pipeline:        VK.Pipeline;
+    mesh_pipeline_layout: VK.Pipeline_Layout;
+
+    default_rectangle_mesh: Gpu_Mesh_Buffers;
+
     get_window_framebuffer_size: Get_Window_Framebuffer_Size;
 }
 
@@ -105,10 +110,29 @@ init :: (
 
     renderer.triangle_pipeline,
     renderer.triangle_pipeline_layout = init_triangle_pipeline();
+
+    renderer.mesh_pipeline,
+    renderer.mesh_pipeline_layout = init_mesh_pipeline();
+
+    renderer.default_rectangle_mesh = init_default_data();
 }
 
 deinit :: () {
     VK.device_wait_idle(renderer.device);
+
+    VMA.destroy_buffer(
+        renderer.allocator,
+        renderer.default_rectangle_mesh.vertex_buffer.buffer,
+        renderer.default_rectangle_mesh.vertex_buffer.allocation,
+    );
+    VMA.destroy_buffer(
+        renderer.allocator,
+        renderer.default_rectangle_mesh.index_buffer.buffer,
+        renderer.default_rectangle_mesh.index_buffer.allocation,
+    );
+
+    VK.destroy_pipeline_layout(renderer.device, renderer.mesh_pipeline_layout);
+    VK.destroy_pipeline(renderer.device, renderer.mesh_pipeline);
 
     VK.destroy_pipeline_layout(renderer.device, renderer.triangle_pipeline_layout);
     VK.destroy_pipeline(renderer.device, renderer.triangle_pipeline);
@@ -358,6 +382,42 @@ DEVICE_EXTENSIONS :: *u8.[
     VK.KHR_SWAPCHAIN_EXTENSION_NAME,
 ];
 
+init_default_data :: () -> Gpu_Mesh_Buffers {
+    RECT_VERTICES :: Vertex.[
+        {
+            position = { 0.5, -0.5, 0 },
+            color    = { 0, 0, 0, 1 },
+        },
+        {
+            position = { 0.5, 0.5, 0 },
+            color    = { 0.5, 0.5, 0.5, 1 },
+        },
+        {
+            position = { -0.5, -0.5, 0 },
+            color    = { 1, 0, 0, 1 },
+        },
+        {
+            position = { -0.5, 0.5, 0 },
+            color    = { 0, 1, 0, 1 },
+        },
+    ];
+
+    RECT_INDICES :: u32.[
+        0, 1, 2,
+        2, 1, 3,
+    ];
+
+    return upload_mesh(
+        renderer.device,
+        renderer.allocator,
+        renderer.immediate_command_buffer,
+        renderer.immediate_fence,
+        renderer.graphics_queue,
+        RECT_INDICES,
+        RECT_VERTICES,
+    );
+}
+
 draw_geometry :: (command_buffer: VK.Command_Buffer) {
     color_attachment := VK.Rendering_Attachment_Info.{
         image_view   = renderer.draw_image.view,
@@ -378,32 +438,125 @@ draw_geometry :: (command_buffer: VK.Command_Buffer) {
 
     VK.cmd_begin_rendering(command_buffer, *rendering_info);
 
-    VK.cmd_bind_pipeline(command_buffer, VK.Pipeline_Bind_Point.GRAPHICS, renderer.triangle_pipeline);
+    {
+        VK.cmd_bind_pipeline(command_buffer, VK.Pipeline_Bind_Point.GRAPHICS, renderer.triangle_pipeline);
 
-    VK.cmd_set_viewport(
-        command_buffer,
-        .[
-            VK.Viewport.{
-                width     = cast(float, renderer.draw_image.extent.width),
-                height    = cast(float, renderer.draw_image.extent.height),
-                min_depth = 0,
-                max_depth = 1,
-            },
-        ],
-    );
+        VK.cmd_set_viewport(
+            command_buffer,
+            .[
+                VK.Viewport.{
+                    width     = cast(float, renderer.draw_image.extent.width),
+                    height    = cast(float, renderer.draw_image.extent.height),
+                    min_depth = 0,
+                    max_depth = 1,
+                },
+            ],
+        );
 
-    VK.cmd_set_scissor(
-        command_buffer,
-        .[
-            VK.Rect_2D.{
-                extent = renderer.draw_image.extent._2D,
-            },
-        ],
-    );
+        VK.cmd_set_scissor(
+            command_buffer,
+            .[
+                VK.Rect_2D.{
+                    extent = renderer.draw_image.extent._2D,
+                },
+            ],
+        );
 
-    VK.cmd_draw(command_buffer, 3, 1, 0, 0);
+        VK.cmd_draw(command_buffer, 3, 1, 0, 0);
+    }
+
+    {
+        VK.cmd_bind_pipeline(command_buffer, VK.Pipeline_Bind_Point.GRAPHICS, renderer.mesh_pipeline);
+
+        VK.cmd_set_viewport(
+            command_buffer,
+            .[
+                VK.Viewport.{
+                    width     = cast(float, renderer.draw_image.extent.width),
+                    height    = cast(float, renderer.draw_image.extent.height),
+                    min_depth = 0,
+                    max_depth = 1,
+                },
+            ],
+        );
+
+        VK.cmd_set_scissor(
+            command_buffer,
+            .[
+                VK.Rect_2D.{
+                    extent = renderer.draw_image.extent._2D,
+                },
+            ],
+        );
+
+        push_constants: Gpu_Draw_Push_Constants = {
+            world_matrix          = Matrix4_Identity,
+            vertex_buffer_address = renderer.default_rectangle_mesh.vertex_buffer_address,
+        };
+
+        VK.cmd_push_constants(
+            command_buffer,
+            renderer.mesh_pipeline_layout,
+            VK.Shader_Stage_Flags.VERTEX,
+            0,
+            size_of(Gpu_Draw_Push_Constants),
+            *push_constants
+        );
+
+        VK.cmd_bind_index_buffer(
+            command_buffer,
+            renderer.default_rectangle_mesh.index_buffer.buffer,
+            0,
+            VK.Index_Type.UINT32,
+        );
+
+        VK.cmd_draw_indexed(command_buffer, 6, 1, 0, 0, 0);
+    }
 
     VK.cmd_end_rendering(command_buffer);
+}
+
+init_mesh_pipeline :: () -> VK.Pipeline, VK.Pipeline_Layout {
+    vertex_shader   := create_shader_module("colored_triangle_mesh.vert.spv");
+    fragment_shader := create_shader_module("colored_triangle.frag.spv");
+    defer VK.destroy_shader_module(renderer.device, vertex_shader);
+    defer VK.destroy_shader_module(renderer.device, fragment_shader);
+
+    pipeline_layout: VK.Pipeline_Layout;
+    {
+        push_constant_range: VK.Push_Constant_Range = {
+            stage_flags = VK.Shader_Stage_Flags.VERTEX,
+            size = size_of(Gpu_Draw_Push_Constants),
+        };
+
+        pipeline_layout_info: VK.Pipeline_Layout_Create_Info = {
+            push_constant_range_count = 1,
+            p_push_constant_ranges    = *push_constant_range,
+        };
+
+        result:, pipeline_layout = VK.create_pipeline_layout(
+            renderer.device,
+            *pipeline_layout_info,
+        );
+        assert_result("Failed to create pipeline layout");
+    }
+
+    builder: Pipeline_Builder = {
+        pipeline_layout = pipeline_layout,
+    };
+
+    builder.set_shaders(*builder, vertex_shader, fragment_shader);
+    builder.set_input_topology(*builder, VK.Primitive_Topology.TRIANGLE_LIST);
+    builder.set_polygon_mode(*builder, VK.Polygon_Mode.FILL);
+    builder.set_cull_mode(*builder, VK.Cull_Mode_Flags.NONE, VK.Front_Face.CLOCKWISE);
+    builder.set_multisampling_none(*builder);
+    builder.disable_blending(*builder);
+    builder.disable_depth_test(*builder);
+    builder.set_color_attachment_format(*builder, renderer.draw_image.format);
+    builder.set_depth_format(*builder, VK.Format.UNDEFINED);
+    pipeline := builder.build(*builder, renderer.device);
+
+    return pipeline, pipeline_layout;
 }
 
 init_triangle_pipeline :: () -> VK.Pipeline, VK.Pipeline_Layout {
