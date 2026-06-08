@@ -4,3 +4,6 @@
 [submodule "modules/Dear_ImGui/imgui"]
 	path = modules/Dear_ImGui/imgui
 	url = git@github.com:ocornut/imgui.git
+[submodule "modules/Jai_GLTF"]
+	path = modules/Jai_GLTF
+	url = git@github.com:IrvingWash/Jai_GLTF.git
